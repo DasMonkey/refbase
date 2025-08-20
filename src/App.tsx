@@ -18,9 +18,17 @@ function App() {
   
   // All hooks must be called before any conditional returns
   const [activeProject, setActiveProject] = useState<Project | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebarCollapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAuthPage, setShowAuthPage] = useState(false);
+
+  // Save sidebar collapsed state to localStorage
+  useEffect(() => {
+    localStorage.setItem('sidebarCollapsed', JSON.stringify(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   // Initialize with first project or show welcome state
   useEffect(() => {

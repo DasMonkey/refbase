@@ -14,6 +14,18 @@ export interface Document {
   title: string;
   content: string;
   type: 'prd' | 'ux-flow' | 'feature-list' | 'bug-list' | 'custom';
+  language?: string; // For syntax highlighting
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Feature {
+  id: string;
+  projectId: string;
+  title: string;
+  content: string;
+  type: 'user-story' | 'enhancement' | 'new-feature' | 'integration' | 'performance' | 'custom';
+  language?: string; // For syntax highlighting
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,6 +48,9 @@ export interface Bug {
   projectId: string;
   title: string;
   description: string;
+  content: string;
+  type: 'ui-bug' | 'functional-bug' | 'performance-bug' | 'security-bug' | 'data-bug' | 'integration-bug';
+  language?: string; // For syntax highlighting
   status: 'open' | 'in-progress' | 'fixed' | 'wont-fix';
   severity: 'low' | 'medium' | 'high' | 'critical';
   assignee?: string;
@@ -72,4 +87,4 @@ export interface ChatMessage {
   timestamp: Date;
 }
 
-export type TabType = 'dashboard' | 'docs' | 'tasks' | 'bugs' | 'calendar' | 'files' | 'chat';
+export type TabType = 'dashboard' | 'docs' | 'tasks' | 'features' | 'bugs' | 'calendar' | 'files' | 'chat';

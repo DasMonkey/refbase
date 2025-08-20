@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, FileText, Edit3, Trash2 } from 'lucide-react';
 import { Project, Document } from '../types';
 import { useSupabaseProjects } from '../hooks/useSupabaseProjects';
 import { useTheme } from '../contexts/ThemeContext';
+import { EnhancedEditor } from './ui/EnhancedEditor';
 
 interface DocumentsTabProps {
   project: Project;
@@ -20,19 +21,52 @@ const documentTypes = [
 export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
   const { documents, createDocument, updateDocument } = useSupabaseProjects();
   const { isDark } = useTheme();
-  const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<Document | null>(() => {
+    const savedDocId = localStorage.getItem(`selectedDocument_${project.id}`);
+    if (savedDocId) {
+      // We'll set this properly after documents are loaded
+      return null;
+    }
+    return null;
+  });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState('');
   const [newDocType, setNewDocType] = useState<Document['type']>('custom');
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const projectDocs = documents.filter(d => d.projectId === project.id);
+
+  // Restore selected document when documents are loaded
+  useEffect(() => {
+    const savedDocId = localStorage.getItem(`selectedDocument_${project.id}`);
+    if (savedDocId && documents.length > 0 && !selectedDoc) {
+      const doc = documents.find(d => d.id === savedDocId && d.projectId === project.id);
+      if (doc) {
+        setSelectedDoc(doc);
+      }
+    }
+  }, [documents, project.id, selectedDoc]);
+
+  // Save selectedDoc to localStorage whenever it changes
+  useEffect(() => {
+    if (selectedDoc) {
+      localStorage.setItem(`selectedDocument_${project.id}`, selectedDoc.id);
+    } else {
+      localStorage.removeItem(`selectedDocument_${project.id}`);
+    }
+  }, [selectedDoc, project.id]);
+
+  // Reset scroll position when switching documents
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [selectedDoc?.id]);
 
   const handleCreateDocument = async () => {
     if (newDocTitle.trim()) {
       const doc = await createDocument(project.id, newDocTitle, newDocType);
       setSelectedDoc(doc);
-      setIsEditing(true);
       setShowCreateModal(false);
       setNewDocTitle('');
       setNewDocType('custom');
@@ -41,15 +75,29 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
 
   const handleSaveDocument = () => {
     if (selectedDoc) {
-      updateDocument(selectedDoc.id, { content: selectedDoc.content });
-      setIsEditing(false);
+      updateDocument(selectedDoc.id, { 
+        content: selectedDoc.content,
+        language: selectedDoc.language 
+      });
+    }
+  };
+
+  const handleContentChange = (content: string) => {
+    if (selectedDoc) {
+      setSelectedDoc({ ...selectedDoc, content });
+    }
+  };
+
+  const handleLanguageChange = (language: string) => {
+    if (selectedDoc) {
+      setSelectedDoc({ ...selectedDoc, language });
     }
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full w-full overflow-hidden">
       {/* Document List */}
-      <div className={`w-80 border-r flex flex-col`} style={{ 
+      <div className={`w-80 border-r flex flex-col flex-shrink-0`} style={{ 
         backgroundColor: isDark ? '#111111' : '#f8fafc',
         borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
       }}>
@@ -74,7 +122,6 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
                 key={doc.id}
                 onClick={() => {
                   setSelectedDoc(doc);
-                  setIsEditing(false);
                 }}
                 className={`w-full text-left p-3 transition-all duration-200 border-l-2 ${
                   selectedDoc?.id === doc.id
@@ -114,11 +161,11 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
       </div>
 
       {/* Document Editor */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
         {selectedDoc ? (
           <>
             {/* Document Header */}
-            <div className={`px-6 py-4 border-b`} style={{ 
+            <div className={`px-6 py-4 border-b flex-shrink-0`} style={{ 
               backgroundColor: isDark ? '#111111' : '#ffffff',
               borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
             }}>
@@ -135,71 +182,37 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  {isEditing ? (
-                    <button
-                      onClick={handleSaveDocument}
-                      className={`px-4 py-2 text-sm font-medium transition-all duration-200 border ${
-                        isDark 
-                          ? 'bg-green-900 hover:bg-green-800 text-green-200 border-green-800' 
-                          : 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200'
-                      }`}
-                    >
-                      Save Changes
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      className={`px-4 py-2 text-sm font-medium transition-all duration-200 border flex items-center ${
-                        isDark 
-                          ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700' 
-                          : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'
-                      }`}
-                    >
-                      <Edit3 size={14} className="mr-2" />
-                      Edit
-                    </button>
-                  )}
+                  <button
+                    onClick={handleSaveDocument}
+                    className={`px-4 py-2 text-sm font-medium transition-all duration-200 border ${
+                      isDark 
+                        ? 'bg-green-900 hover:bg-green-800 text-green-200 border-green-800' 
+                        : 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200'
+                    }`}
+                  >
+                    Save Changes
+                  </button>
                 </div>
               </div>
             </div>
 
             {/* Document Content */}
-            <div className={`flex-1 p-4`} style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
-              {isEditing ? (
-                <textarea
-                  value={selectedDoc.content}
-                  onChange={(e) => setSelectedDoc({ ...selectedDoc, content: e.target.value })}
-                  className={`w-full h-full p-4 border resize-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-all duration-200 text-sm`}
-                  style={{ 
-                    borderColor: isDark ? '#2a2a2a' : '#e2e8f0',
-                    backgroundColor: isDark ? '#111111' : '#ffffff',
-                    color: isDark ? '#e5e5e5' : '#111111'
-                  }}
-                  placeholder="Start writing your document..."
-                />
-              ) : (
-                <div className={`p-4 h-full overflow-y-auto border`} style={{ 
+            <div className={`flex-1 min-h-0`} style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
+              <div className="h-full p-4">
+                <div className={`h-full border rounded-lg overflow-hidden`} style={{ 
                   backgroundColor: isDark ? '#111111' : '#ffffff',
                   borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
                 }}>
-                  {selectedDoc.content ? (
-                    <div className="prose max-w-none">
-                      <pre className={`whitespace-pre-wrap text-sm leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-800'}`}>{selectedDoc.content}</pre>
-                    </div>
-                  ) : (
-                    <div className={`text-center py-16 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-                      <FileText className={`w-8 h-8 mx-auto mb-3 ${isDark ? 'text-gray-600' : 'text-gray-400'}`} />
-                      <p className="text-sm font-medium mb-2">This document is empty</p>
-                      <button
-                        onClick={() => setIsEditing(true)}
-                        className={`text-sm ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-600 hover:text-gray-700'} font-medium`}
-                      >
-                        Start writing
-                      </button>
-                    </div>
-                  )}
+                  <EnhancedEditor
+                    content={selectedDoc.content}
+                    onChange={handleContentChange}
+                    language={selectedDoc.language || 'markdown'}
+                    onLanguageChange={handleLanguageChange}
+                    placeholder="Start writing your document..."
+                    fileName={selectedDoc.title}
+                  />
                 </div>
-              )}
+              </div>
             </div>
           </>
         ) : (

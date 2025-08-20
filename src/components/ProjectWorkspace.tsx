@@ -4,6 +4,7 @@ import {
   Home, 
   FileText, 
   CheckSquare, 
+  Lightbulb,
   Bug, 
   Calendar, 
   FolderOpen, 
@@ -17,6 +18,7 @@ import { useSupabaseProjects } from '../hooks/useSupabaseProjects';
 import { Dashboard } from './Dashboard';
 import { DocumentsTab } from './DocumentsTab';
 import { TasksTab } from './TasksTab';
+import { FeaturesTab } from './FeaturesTab';
 import { BugsTab } from './BugsTab';
 import { CalendarTab } from './CalendarTab';
 import { FilesTab } from './FilesTab';
@@ -31,16 +33,21 @@ const tabs = [
   { id: 'dashboard' as TabType, label: 'Dashboard', icon: Home, shortcut: '1' },
   { id: 'docs' as TabType, label: 'Documents', icon: FileText, shortcut: '2' },
   { id: 'tasks' as TabType, label: 'Tasks', icon: CheckSquare, shortcut: '3' },
-  { id: 'bugs' as TabType, label: 'Bugs', icon: Bug, shortcut: '4' },
-  { id: 'calendar' as TabType, label: 'Calendar', icon: Calendar, shortcut: '5' },
-  { id: 'files' as TabType, label: 'Files', icon: FolderOpen, shortcut: '6' },
-  { id: 'chat' as TabType, label: 'Chat', icon: MessageCircle, shortcut: '7' },
+  { id: 'features' as TabType, label: 'Features', icon: Lightbulb, shortcut: '4' },
+  { id: 'bugs' as TabType, label: 'Bugs', icon: Bug, shortcut: '5' },
+  { id: 'calendar' as TabType, label: 'Calendar', icon: Calendar, shortcut: '6' },
+  { id: 'files' as TabType, label: 'Files', icon: FolderOpen, shortcut: '7' },
+  { id: 'chat' as TabType, label: 'Chat', icon: MessageCircle, shortcut: '8' },
 ];
 
 export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  // Initialize activeTab from localStorage or default to 'dashboard'
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const saved = localStorage.getItem(`activeTab_${project.id}`);
+    return (saved as TabType) || 'dashboard';
+  });
   const { isDark, toggleTheme } = useTheme();
-  const { tasks, bugs, documents, files, messages } = useSupabaseProjects();
+  const { tasks, features, bugs, documents, files, messages } = useSupabaseProjects();
   const [isMac, setIsMac] = useState(false);
   const [aiChatVisible, setAiChatVisible] = useState(true);
   const [mouseY, setMouseY] = useState(0);
@@ -51,6 +58,11 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) =
   useEffect(() => {
     setIsMac(navigator.platform.toUpperCase().indexOf('MAC') >= 0);
   }, []);
+
+  // Save activeTab to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem(`activeTab_${project.id}`, activeTab);
+  }, [activeTab, project.id]);
 
   // Track mouse position and window height for AI chat auto-hide
   useEffect(() => {
@@ -124,6 +136,8 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) =
         return <DocumentsTab project={project} />;
       case 'tasks':
         return <TasksTab project={project} />;
+      case 'features':
+        return <FeaturesTab project={project} />;
       case 'bugs':
         return <BugsTab project={project} />;
       case 'calendar':
@@ -166,6 +180,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) =
   const getProjectContext = () => {
     // Filter data for current project
     const projectTasks = tasks.filter(t => t.projectId === project.id);
+    const projectFeatures = features.filter(f => f.projectId === project.id);
     const projectBugs = bugs.filter(b => b.projectId === project.id);
     const projectDocs = documents.filter(d => d.projectId === project.id);
     const projectFiles = files?.filter(f => f.projectId === project.id) || [];
@@ -182,6 +197,15 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) =
           title: t.title,
           status: t.status,
           priority: t.priority
+        }))
+      },
+      features: {
+        total: projectFeatures.length,
+        types: [...new Set(projectFeatures.map(f => f.type))],
+        recentFeatures: projectFeatures.slice(0, 5).map(f => ({
+          id: f.id,
+          title: f.title,
+          type: f.type
         }))
       },
       bugs: {

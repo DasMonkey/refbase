@@ -23,9 +23,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Check if we're in the browser environment
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('theme');
-      return saved ? JSON.parse(saved) : false;
+      return saved ? JSON.parse(saved) : true; // Default to dark theme
     }
-    return false;
+    return true; // Default to dark theme
   });
 
   useEffect(() => {

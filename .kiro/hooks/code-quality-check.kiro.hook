@@ -1,0 +1,23 @@
+{
+  "enabled": true,
+  "name": "Code Quality Checker",
+  "description": "Automatically runs lint checks, TypeScript error checking, and validates proper code closure when any file is modified",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/**/*.ts",
+      "src/**/*.tsx",
+      "src/**/*.js",
+      "src/**/*.jsx",
+      "*.ts",
+      "*.tsx",
+      "*.js",
+      "*.jsx"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A file has been modified. Please perform the following checks on the changed code:\n\n1. Run ESLint to check for linting errors and code style issues\n2. Check for TypeScript compilation errors and type issues\n3. Verify that all code blocks, functions, objects, and brackets are properly closed\n4. Identify any syntax errors or incomplete code structures\n5. Check for missing imports or exports\n6. Validate that all variables and functions are properly declared\n\nFocus on the recently modified files and provide a summary of any issues found, along with specific suggestions for fixes."
+  }
+}
