@@ -30,6 +30,36 @@ export interface Feature {
   updatedAt: Date;
 }
 
+export interface FeatureData {
+  id: string;
+  featureId: string;
+  projectId: string;
+  dataType: 'info_file' | 'kanban_board' | 'ai_summary' | 'chat_history' | 'imported_file' | 'logs' | 'attachments' | 'metadata';
+  name: string;
+  content: string;
+  contentType: string; // 'markdown', 'javascript', 'typescript', 'json', 'text', etc.
+  order: number;
+  parentId?: string;
+  fileSize: number;
+  language?: string;
+  tags: string[];
+  status: 'active' | 'archived' | 'deleted' | 'draft';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  metadata: Record<string, any>;
+  settings: Record<string, any>;
+  createdAt: Date;
+  updatedAt: Date;
+  accessedAt: Date;
+  createdBy?: string;
+  updatedBy?: string;
+}
+
+// Convenience type for info files specifically
+export interface FeatureFile extends Omit<FeatureData, 'dataType'> {
+  dataType: 'info_file';
+  type: 'requirement' | 'structure' | 'implementation' | 'testing' | 'documentation' | 'notes' | 'custom';
+}
+
 export interface Task {
   id: string;
   projectId: string;
@@ -38,6 +68,8 @@ export interface Task {
   status: 'todo' | 'in-progress' | 'fix-later' | 'done';
   priority: 'low' | 'medium' | 'high' | 'top';
   assignee?: string;
+  featureId?: string; // Link to specific feature
+  bugId?: string; // Link to specific bug
   dueDate?: Date;
   createdAt: Date;
   updatedAt: Date;

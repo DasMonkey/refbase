@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, FileText, Edit3, Trash2 } from 'lucide-react';
+import { FiTrash } from 'react-icons/fi';
 import { Project, Document } from '../types';
 import { useSupabaseProjects } from '../hooks/useSupabaseProjects';
 import { useTheme } from '../contexts/ThemeContext';
 import { EnhancedEditor } from './ui/EnhancedEditor';
+import { DeleteConfirmationModal } from './ui/DeleteConfirmationModal';
 
 interface DocumentsTabProps {
   project: Project;
@@ -19,7 +21,7 @@ const documentTypes = [
 ];
 
 export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
-  const { documents, createDocument, updateDocument } = useSupabaseProjects();
+  const { documents, createDocument, updateDocument, deleteDocument } = useSupabaseProjects();
   const { isDark } = useTheme();
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(() => {
     const savedDocId = localStorage.getItem(`selectedDocument_${project.id}`);
@@ -32,6 +34,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState('');
   const [newDocType, setNewDocType] = useState<Document['type']>('custom');
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const projectDocs = documents.filter(d => d.projectId === project.id);
@@ -82,6 +85,19 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
     }
   };
 
+  const handleDeleteDocument = () => {
+    if (selectedDoc) {
+      setShowDeleteConfirmation(true);
+    }
+  };
+
+  const confirmDeleteDocument = () => {
+    if (selectedDoc) {
+      deleteDocument(selectedDoc.id);
+      setSelectedDoc(null);
+    }
+  };
+
   const handleContentChange = (content: string) => {
     if (selectedDoc) {
       setSelectedDoc({ ...selectedDoc, content });
@@ -97,7 +113,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* Document List */}
-      <div className={`w-80 border-r flex flex-col flex-shrink-0`} style={{ 
+      <div className={`w-64 border-r flex flex-col flex-shrink-0`} style={{ 
         backgroundColor: isDark ? '#111111' : '#f8fafc',
         borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
       }}>
@@ -191,6 +207,17 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
                     }`}
                   >
                     Save Changes
+                  </button>
+                  <button
+                    onClick={handleDeleteDocument}
+                    className={`px-4 py-2.5 text-sm font-medium transition-all duration-200 border ${
+                      isDark 
+                        ? 'bg-red-900 hover:bg-red-800 text-red-200 border-red-800' 
+                        : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                    }`}
+                    title="Delete Document"
+                  >
+                    <FiTrash className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -309,6 +336,16 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
           </motion.div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteConfirmation}
+        onClose={() => setShowDeleteConfirmation(false)}
+        onConfirm={confirmDeleteDocument}
+        title="Delete Document"
+        message="Are you sure you want to delete this document? All content will be permanently removed."
+        itemName={selectedDoc?.title}
+      />
     </div>
   );
 };

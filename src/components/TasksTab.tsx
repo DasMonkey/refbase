@@ -148,10 +148,10 @@ const Column = ({
   const filteredTasks = tasks.filter((c) => c.status === column);
 
   return (
-    <div className="w-56 shrink-0">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className={`font-medium ${headingColor}`}>{title}</h3>
-        <span className="rounded text-sm text-neutral-400">
+    <div className="flex-1 min-w-0 h-full flex flex-col mx-2">
+      <div className="mb-3 flex items-center justify-between flex-shrink-0">
+        <h3 className={`font-medium ${headingColor} truncate`}>{title}</h3>
+        <span className="rounded text-sm text-neutral-400 ml-2">
           {filteredTasks.length}
         </span>
       </div>
@@ -159,7 +159,7 @@ const Column = ({
         onDrop={handleDragEnd}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        className={`h-full w-full transition-colors ${
+        className={`flex-1 min-h-0 overflow-y-auto transition-colors ${
           active ? "bg-neutral-800/50" : "bg-neutral-800/0"
         }`}
       >

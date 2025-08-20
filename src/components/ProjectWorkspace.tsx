@@ -129,26 +129,58 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) =
   }, [isMac, forceShowAiChat]);
 
   const renderTabContent = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard project={project} />;
-      case 'docs':
-        return <DocumentsTab project={project} />;
-      case 'tasks':
-        return <TasksTab project={project} />;
-      case 'features':
-        return <FeaturesTab project={project} />;
-      case 'bugs':
-        return <BugsTab project={project} />;
-      case 'calendar':
-        return <CalendarTab project={project} />;
-      case 'files':
-        return <FilesTab project={project} />;
-      case 'chat':
-        return <ChatTab project={project} />;
-      default:
-        return <Dashboard project={project} />;
-    }
+    return (
+      <div className="h-full relative">
+        <div 
+          className="h-full absolute inset-0" 
+          style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}
+        >
+          <Dashboard project={project} />
+        </div>
+        <div 
+          className="h-full absolute inset-0" 
+          style={{ display: activeTab === 'docs' ? 'block' : 'none' }}
+        >
+          <DocumentsTab project={project} />
+        </div>
+        <div 
+          className="h-full absolute inset-0" 
+          style={{ display: activeTab === 'tasks' ? 'block' : 'none' }}
+        >
+          <TasksTab project={project} />
+        </div>
+        <div 
+          className="h-full absolute inset-0" 
+          style={{ display: activeTab === 'features' ? 'block' : 'none' }}
+        >
+          <FeaturesTab project={project} />
+        </div>
+        <div 
+          className="h-full absolute inset-0" 
+          style={{ display: activeTab === 'bugs' ? 'block' : 'none' }}
+        >
+          <BugsTab project={project} />
+        </div>
+        <div 
+          className="h-full absolute inset-0" 
+          style={{ display: activeTab === 'calendar' ? 'block' : 'none' }}
+        >
+          <CalendarTab project={project} />
+        </div>
+        <div 
+          className="h-full absolute inset-0" 
+          style={{ display: activeTab === 'files' ? 'block' : 'none' }}
+        >
+          <FilesTab project={project} />
+        </div>
+        <div 
+          className="h-full absolute inset-0" 
+          style={{ display: activeTab === 'chat' ? 'block' : 'none' }}
+        >
+          <ChatTab project={project} />
+        </div>
+      </div>
+    );
   };
 
   const handleAiMessage = async (message: string, files?: File[]) => {
@@ -310,16 +342,9 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) =
 
         {/* Tab Content */}
         <div className="flex-1 overflow-hidden">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.2 }}
-            className="h-full"
-          >
+          <div className="h-full">
             {renderTabContent()}
-          </motion.div>
+          </div>
         </div>
       </div>
 

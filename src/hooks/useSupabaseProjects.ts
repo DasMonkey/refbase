@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import { Project, Document, Task, Bug, Feature, CalendarEvent, FileItem, ChatMessage } from '../types';
+import { Project, Document, Task, Bug, Feature, FeatureData, FeatureFile, CalendarEvent, FileItem, ChatMessage } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+
+// Note: Removed global state to fix state synchronization issues
 
 export const useSupabaseProjects = () => {
   const { user } = useAuth();
@@ -10,33 +12,38 @@ export const useSupabaseProjects = () => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [features, setFeatures] = useState<Feature[]>([]);
+  const [featureData, setFeatureData] = useState<FeatureData[]>([]);
+  const [featureFiles, setFeatureFiles] = useState<FeatureFile[]>([]);
   const [bugs, setBugs] = useState<Bug[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   // Load user's data from Supabase
   useEffect(() => {
-    if (user) {
+    if (user && !dataLoaded) {
       loadAllData();
-    } else {
+    } else if (!user) {
       // Clear data when user logs out
       setProjects([]);
       setDocuments([]);
       setTasks([]);
       setFeatures([]);
+      setFeatureData([]);
+      setFeatureFiles([]);
       setBugs([]);
       setEvents([]);
       setFiles([]);
       setMessages([]);
       setLoading(false);
+      setDataLoaded(false);
     }
-  }, [user]);
+  }, [user, dataLoaded]);
 
   const loadAllData = async () => {
     if (!user) return;
-
     try {
       setLoading(true);
       
@@ -70,6 +77,7 @@ export const useSupabaseProjects = () => {
           loadDocuments(projectIds),
           loadTasks(projectIds),
           loadFeatures(projectIds),
+          loadFeatureData(projectIds),
           loadBugs(projectIds),
           loadMessages(projectIds),
           loadFiles(projectIds)
@@ -81,6 +89,7 @@ export const useSupabaseProjects = () => {
       loadFromLocalStorage();
     } finally {
       setLoading(false);
+      setDataLoaded(true);
     }
   };
 
@@ -101,6 +110,8 @@ export const useSupabaseProjects = () => {
     setDocuments(loadUserData('documents'));
     setTasks(loadUserData('tasks'));
     setFeatures(loadUserData('features'));
+    setFeatureData(loadUserData('featureData'));
+    setFeatureFiles(loadUserData('featureFiles'));
     setBugs(loadUserData('bugs'));
     setEvents(loadUserData('events'));
     setFiles(loadUserData('files'));
@@ -136,6 +147,8 @@ export const useSupabaseProjects = () => {
       const formattedTasks = data.map(t => ({
         ...t,
         projectId: t.project_id,
+        featureId: t.feature_id || undefined,
+        bugId: t.bug_id || undefined,
         dueDate: t.due_date ? new Date(t.due_date) : undefined,
         createdAt: new Date(t.created_at),
         updatedAt: new Date(t.updated_at)
@@ -159,6 +172,45 @@ export const useSupabaseProjects = () => {
         updatedAt: new Date(f.updated_at)
       }));
       setFeatures(formattedFeatures);
+    }
+  };
+
+  const loadFeatureData = async (projectIds: string[]) => {
+    const { data, error } = await supabase
+      .from('feature_data')
+      .select('*')
+      .in('project_id', projectIds)
+      .order('feature_id', { ascending: false })
+      .order('order', { ascending: true });
+
+    if (!error && data) {
+      const formattedData = data.map(fd => ({
+        ...fd,
+        featureId: fd.feature_id,
+        projectId: fd.project_id,
+        dataType: fd.data_type,
+        contentType: fd.content_type,
+        parentId: fd.parent_id,
+        fileSize: fd.file_size || 0,
+        tags: fd.tags || [],
+        metadata: fd.metadata || {},
+        settings: fd.settings || {},
+        createdAt: new Date(fd.created_at),
+        updatedAt: new Date(fd.updated_at),
+        accessedAt: new Date(fd.accessed_at),
+        createdBy: fd.created_by,
+        updatedBy: fd.updated_by
+      }));
+      setFeatureData(formattedData);
+      
+      // Filter info files for backward compatibility
+      const infoFiles = formattedData
+        .filter(fd => fd.dataType === 'info_file')
+        .map(fd => ({
+          ...fd,
+          type: fd.metadata?.fileType || 'custom'
+        })) as FeatureFile[];
+      setFeatureFiles(infoFiles);
     }
   };
 
@@ -421,6 +473,29 @@ export const useSupabaseProjects = () => {
     saveToLocalStorage('documents', updated);
   };
 
+  const deleteDocument = async (id: string) => {
+    if (!user) throw new Error('User not authenticated');
+
+    try {
+      // Try to delete from Supabase
+      const { error } = await supabase
+        .from('documents')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting document from Supabase:', error);
+      }
+    } catch (error) {
+      console.error('Error deleting document:', error);
+    }
+
+    // Always update local state
+    const updated = documents.filter(d => d.id !== id);
+    setDocuments(updated);
+    saveToLocalStorage('documents', updated);
+  };
+
   const createFeature = async (projectId: string, title: string, type: Feature['type']) => {
     if (!user) throw new Error('User not authenticated');
 
@@ -511,9 +586,159 @@ export const useSupabaseProjects = () => {
     const updated = features.filter(f => f.id !== id);
     setFeatures(updated);
     saveToLocalStorage('features', updated);
+
+    // Also delete related feature data
+    const updatedData = featureData.filter(fd => fd.featureId !== id);
+    setFeatureData(updatedData);
+    saveToLocalStorage('featureData', updatedData);
+    
+    const updatedFiles = featureFiles.filter(ff => ff.featureId !== id);
+    setFeatureFiles(updatedFiles);
+    saveToLocalStorage('featureFiles', updatedFiles);
   };
 
-  const createTask = async (projectId: string, title: string, description: string, priority: Task['priority'] = 'medium', status: Task['status'] = 'todo') => {
+  const createFeatureFile = async (featureId: string, name: string, type: FeatureFile['type'], existingFeature?: Feature) => {
+    if (!user) throw new Error('User not authenticated');
+
+    const feature = existingFeature || features.find(f => f.id === featureId);
+    if (!feature) throw new Error('Feature not found');
+
+    // Find the highest order number for this feature's info files
+    const existingFiles = featureData.filter(fd => fd.featureId === featureId && fd.dataType === 'info_file');
+    const maxOrder = existingFiles.length > 0 ? Math.max(...existingFiles.map(ff => ff.order)) : 0;
+
+    const newData: FeatureData = {
+      id: uuidv4(),
+      featureId,
+      projectId: feature.projectId,
+      dataType: 'info_file',
+      name,
+      content: '',
+      contentType: 'markdown',
+      order: maxOrder + 1,
+      fileSize: 0,
+      tags: [],
+      status: 'active',
+      priority: 'medium',
+      metadata: { fileType: type },
+      settings: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      accessedAt: new Date(),
+    };
+
+    const newFile: FeatureFile = {
+      ...newData,
+      type
+    };
+
+    try {
+      // Save to Supabase
+      const { error } = await supabase
+        .from('feature_data')
+        .insert([{
+          id: newData.id,
+          feature_id: featureId,
+          project_id: feature.projectId,
+          data_type: 'info_file',
+          name: newData.name,
+          content: newData.content,
+          content_type: 'markdown',
+          order: newData.order,
+          file_size: 0,
+          tags: [],
+          status: 'active',
+          priority: 'medium',
+          metadata: { fileType: type },
+          settings: {}
+        }]);
+
+      if (error) {
+        console.error('Error creating feature file in Supabase:', error);
+      }
+    } catch (error) {
+      console.error('Error creating feature file:', error);
+    }
+
+    // Update local state
+    const updatedData = [...featureData, newData];
+    setFeatureData(updatedData);
+    saveToLocalStorage('featureData', updatedData);
+    
+    const updatedFiles = [...featureFiles, newFile];
+    setFeatureFiles(updatedFiles);
+    saveToLocalStorage('featureFiles', updatedFiles);
+    
+    return newFile;
+  };
+
+  const updateFeatureFile = async (id: string, updates: Partial<FeatureFile>) => {
+    if (!user) throw new Error('User not authenticated');
+
+    try {
+      // Prepare updates for the new table structure
+      const dbUpdates: any = {};
+      if (updates.name) dbUpdates.name = updates.name;
+      if (updates.content) dbUpdates.content = updates.content;
+      if (updates.language) dbUpdates.language = updates.language;
+      if (updates.order) dbUpdates.order = updates.order;
+      if (updates.type) dbUpdates.metadata = { fileType: updates.type };
+      
+      // Update in Supabase
+      const { error } = await supabase
+        .from('feature_data')
+        .update(dbUpdates)
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error updating feature file in Supabase:', error);
+      }
+    } catch (error) {
+      console.error('Error updating feature file:', error);
+    }
+
+    // Update local state
+    const updatedData = featureData.map(fd => 
+      fd.id === id ? { ...fd, ...updates, updatedAt: new Date() } : fd
+    );
+    setFeatureData(updatedData);
+    saveToLocalStorage('featureData', updatedData);
+    
+    const updatedFiles = featureFiles.map(ff => 
+      ff.id === id ? { ...ff, ...updates, updatedAt: new Date() } : ff
+    );
+    setFeatureFiles(updatedFiles);
+    saveToLocalStorage('featureFiles', updatedFiles);
+  };
+
+  const deleteFeatureFile = async (id: string) => {
+    if (!user) throw new Error('User not authenticated');
+
+    try {
+      // Delete from Supabase
+      const { error } = await supabase
+        .from('feature_data')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting feature file from Supabase:', error);
+      }
+    } catch (error) {
+      console.error('Error deleting feature file:', error);
+    }
+
+    // Update local state
+    const updatedData = featureData.filter(fd => fd.id !== id);
+    setFeatureData(updatedData);
+    saveToLocalStorage('featureData', updatedData);
+    
+    const updatedFiles = featureFiles.filter(ff => ff.id !== id);
+    setFeatureFiles(updatedFiles);
+    saveToLocalStorage('featureFiles', updatedFiles);
+  };
+
+  const createTask = async (projectId: string, title: string, description: string, priority: Task['priority'] = 'medium', status: Task['status'] = 'todo', featureId?: string, bugId?: string) => {
     if (!user) throw new Error('User not authenticated');
 
     const newTask: Task = {
@@ -523,6 +748,8 @@ export const useSupabaseProjects = () => {
       description,
       status,
       priority,
+      featureId,
+      bugId,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -537,7 +764,9 @@ export const useSupabaseProjects = () => {
           title: newTask.title,
           description: newTask.description,
           status: newTask.status,
-          priority: newTask.priority
+          priority: newTask.priority,
+          feature_id: featureId,
+          bug_id: bugId
         }]);
 
       if (error) {
@@ -755,6 +984,8 @@ export const useSupabaseProjects = () => {
     documents,
     tasks,
     features,
+    featureData,
+    featureFiles,
     bugs,
     events,
     files,
@@ -765,9 +996,13 @@ export const useSupabaseProjects = () => {
     deleteProject,
     createDocument,
     updateDocument,
+    deleteDocument,
     createFeature,
     updateFeature,
     deleteFeature,
+    createFeatureFile,
+    updateFeatureFile,
+    deleteFeatureFile,
     createTask,
     updateTask,
     deleteTask,

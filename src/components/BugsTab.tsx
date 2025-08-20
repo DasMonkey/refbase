@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Bug, AlertCircle, CheckCircle, Clock, User, Tag, FileText, Brain, MessageSquare, Upload, History, Info, Shield, Settings } from 'lucide-react';
-import { Project, Bug as BugType } from '../types';
+import { Plus, Bug, AlertCircle, CheckCircle, Clock, User, Tag, FileText, Brain, MessageSquare, Upload, History, Info, Shield, Settings, CheckSquare, Edit, ChevronDown, ChevronRight } from 'lucide-react';
+import { FiPlus, FiTrash } from 'react-icons/fi';
+import { FaFire } from 'react-icons/fa';
+import { Project, Bug as BugType, Task } from '../types';
 import { useSupabaseProjects } from '../hooks/useSupabaseProjects';
 import { useTheme } from '../contexts/ThemeContext';
 import { EnhancedEditor } from './ui/EnhancedEditor';
+import { DeleteConfirmationModal } from './ui/DeleteConfirmationModal';
 
 interface BugsTabProps {
   project: Project;
@@ -26,6 +29,20 @@ const severityColors = {
   critical: 'bg-red-100 text-red-800 border-red-200',
 };
 
+const severityOptions = [
+  { id: 'low' as const, label: 'Low', description: 'Minor issues that don\'t impact functionality' },
+  { id: 'medium' as const, label: 'Medium', description: 'Issues that affect functionality but have workarounds' },
+  { id: 'high' as const, label: 'High', description: 'Major issues that significantly impact functionality' },
+  { id: 'critical' as const, label: 'Critical', description: 'Severe issues that block core functionality' },
+];
+
+const statusOptions = [
+  { id: 'open' as const, label: 'Open', description: 'Bug is reported and needs to be addressed' },
+  { id: 'in-progress' as const, label: 'In Progress', description: 'Bug is being worked on' },
+  { id: 'fixed' as const, label: 'Fixed', description: 'Bug has been resolved' },
+  { id: 'wont-fix' as const, label: 'Won\'t Fix', description: 'Bug will not be addressed' },
+];
+
 const statusIcons = {
   open: AlertCircle,
   'in-progress': Clock,
@@ -46,13 +63,48 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newBugTitle, setNewBugTitle] = useState('');
   const [newBugType, setNewBugType] = useState<BugType['type']>('functional-bug');
-  const [activeSubTab, setActiveSubTab] = useState<'info' | 'reproduction' | 'analysis' | 'comments' | 'logs'>(() => {
+  const [activeSubTab, setActiveSubTab] = useState<'info' | 'tasks' | 'reproduction' | 'analysis' | 'comments' | 'logs'>(() => {
     const saved = localStorage.getItem(`bugSubTab_${project.id}`);
-    return (saved as 'info' | 'reproduction' | 'analysis' | 'comments' | 'logs') || 'info';
+    return (saved as 'info' | 'tasks' | 'reproduction' | 'analysis' | 'comments' | 'logs') || 'info';
+  });
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editingTitle, setEditingTitle] = useState('');
+  const [showSeverityPopup, setShowSeverityPopup] = useState(false);
+  const [showStatusPopup, setShowStatusPopup] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [isOpenExpanded, setIsOpenExpanded] = useState(() => {
+    const saved = localStorage.getItem(`openBugsExpanded_${project.id}`);
+    return saved ? JSON.parse(saved) : true; // Default open
+  });
+  const [isInProgressExpanded, setIsInProgressExpanded] = useState(() => {
+    const saved = localStorage.getItem(`inProgressBugsExpanded_${project.id}`);
+    return saved ? JSON.parse(saved) : true; // Default open
+  });
+  const [isCompletedExpanded, setIsCompletedExpanded] = useState(() => {
+    const saved = localStorage.getItem(`completedBugsExpanded_${project.id}`);
+    return saved ? JSON.parse(saved) : false; // Default collapsed
+  });
+  const [isOthersExpanded, setIsOthersExpanded] = useState(() => {
+    const saved = localStorage.getItem(`othersBugsExpanded_${project.id}`);
+    return saved ? JSON.parse(saved) : false; // Default collapsed
   });
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const projectBugs = bugs.filter(b => b.projectId === project.id);
+  
+  // Split bugs by status
+  const openBugs = projectBugs.filter(bug => bug.status === 'open');
+  const inProgressBugs = projectBugs.filter(bug => bug.status === 'in-progress');
+  const completedBugs = projectBugs.filter(bug => bug.status === 'fixed');
+  const othersBugs = projectBugs.filter(bug => bug.status === 'wont-fix');
+
+  // Save section expanded states
+  useEffect(() => {
+    localStorage.setItem(`openBugsExpanded_${project.id}`, JSON.stringify(isOpenExpanded));
+    localStorage.setItem(`inProgressBugsExpanded_${project.id}`, JSON.stringify(isInProgressExpanded));
+    localStorage.setItem(`completedBugsExpanded_${project.id}`, JSON.stringify(isCompletedExpanded));
+    localStorage.setItem(`othersBugsExpanded_${project.id}`, JSON.stringify(isOthersExpanded));
+  }, [isOpenExpanded, isInProgressExpanded, isCompletedExpanded, isOthersExpanded, project.id]);
 
   // Restore selected bug when bugs are loaded
   useEffect(() => {
@@ -105,6 +157,19 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
     }
   };
 
+  const handleDeleteBug = () => {
+    if (selectedBug) {
+      setShowDeleteConfirmation(true);
+    }
+  };
+
+  const confirmDeleteBug = () => {
+    if (selectedBug) {
+      deleteBug(selectedBug.id);
+      setSelectedBug(null);
+    }
+  };
+
   const handleContentChange = (content: string) => {
     if (selectedBug) {
       setSelectedBug({ ...selectedBug, content });
@@ -117,8 +182,54 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
     }
   };
 
+  const handleStartTitleEdit = () => {
+    if (selectedBug) {
+      setEditingTitle(selectedBug.title);
+      setIsEditingTitle(true);
+    }
+  };
+
+  const handleSaveTitleEdit = async () => {
+    if (selectedBug && editingTitle.trim() && editingTitle.trim() !== selectedBug.title) {
+      await updateBug(selectedBug.id, { title: editingTitle.trim() });
+      setSelectedBug({ ...selectedBug, title: editingTitle.trim() });
+    }
+    setIsEditingTitle(false);
+    setEditingTitle('');
+  };
+
+  const handleCancelTitleEdit = () => {
+    setIsEditingTitle(false);
+    setEditingTitle('');
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSaveTitleEdit();
+    } else if (e.key === 'Escape') {
+      handleCancelTitleEdit();
+    }
+  };
+
+  const handleSeverityChange = async (newSeverity: BugType['severity']) => {
+    if (selectedBug && newSeverity !== selectedBug.severity) {
+      await updateBug(selectedBug.id, { severity: newSeverity });
+      setSelectedBug({ ...selectedBug, severity: newSeverity });
+    }
+    setShowSeverityPopup(false);
+  };
+
+  const handleStatusChange = async (newStatus: BugType['status']) => {
+    if (selectedBug && newStatus !== selectedBug.status) {
+      await updateBug(selectedBug.id, { status: newStatus });
+      setSelectedBug({ ...selectedBug, status: newStatus });
+    }
+    setShowStatusPopup(false);
+  };
+
   const subTabs = [
     { id: 'info' as const, label: 'Details', icon: Info },
+    { id: 'tasks' as const, label: 'Tasks', icon: CheckSquare },
     { id: 'reproduction' as const, label: 'Reproduction', icon: Settings },
     { id: 'analysis' as const, label: 'Analysis', icon: Brain },
     { id: 'comments' as const, label: 'Comments', icon: MessageSquare },
@@ -131,6 +242,8 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
     switch (activeSubTab) {
       case 'info':
         return renderInfoSection();
+      case 'tasks':
+        return renderTasksSection();
       case 'reproduction':
         return renderReproductionSection();
       case 'analysis':
@@ -164,6 +277,19 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
             />
           </div>
         </div>
+      </div>
+    );
+  };
+
+  const renderTasksSection = () => {
+    if (!selectedBug) return null;
+
+    return (
+      <div className={`flex-1 min-h-0 overflow-hidden`} style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
+        <BugKanbanBoard 
+          bug={selectedBug} 
+          project={project}
+        />
       </div>
     );
   };
@@ -302,7 +428,7 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* Bug List */}
-      <div className={`w-80 border-r flex flex-col flex-shrink-0`} style={{ 
+      <div className={`w-64 border-r flex flex-col flex-shrink-0`} style={{ 
         backgroundColor: isDark ? '#111111' : '#f8fafc',
         borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
       }}>
@@ -320,47 +446,64 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3">
-          <div className="space-y-1">
-            {projectBugs.map((bug) => {
-              const StatusIcon = statusIcons[bug.status];
-              return (
-                <motion.button
-                  key={bug.id}
-                  onClick={() => {
-                    setSelectedBug(bug);
-                  }}
-                  className={`w-full text-left p-3 transition-all duration-200 border-l-2 ${
-                    selectedBug?.id === bug.id
-                      ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
-                      : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
-                  }`}
-                  whileHover={{ x: 2 }}
-                  whileTap={{ scale: 0.99 }}
-                >
-                  <div className="flex items-center space-x-3">
-                    <StatusIcon size={14} className={`${bug.status === 'open' ? 'text-red-500' :
-                      bug.status === 'in-progress' ? 'text-blue-500' :
-                      bug.status === 'fixed' ? 'text-green-500' :
-                      'text-gray-500'}`} />
-                    <div className="min-w-0 flex-1">
-                      <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'} truncate`}>{bug.title}</div>
-                      <div className="flex items-center space-x-2 mt-0.5">
-                        <span className={`text-xs px-2 py-0.5 rounded ${severityColors[bug.severity]}`}>
-                          {bug.severity}
-                        </span>
-                        <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
-                        <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                          {new Date(bug.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </motion.button>
-              );
-            })}
-          </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-4">
+          {/* Open Bugs Section */}
+          <BugSection
+            title="Open"
+            icon={AlertCircle}
+            iconColor="text-red-500"
+            bugs={openBugs}
+            isExpanded={isOpenExpanded}
+            onToggle={() => setIsOpenExpanded(!isOpenExpanded)}
+            selectedBug={selectedBug}
+            onBugSelect={setSelectedBug}
+            isDark={isDark}
+            defaultOpacity={1}
+          />
 
+          {/* In Progress Bugs Section */}
+          <BugSection
+            title="In Progress"
+            icon={Clock}
+            iconColor="text-blue-500"
+            bugs={inProgressBugs}
+            isExpanded={isInProgressExpanded}
+            onToggle={() => setIsInProgressExpanded(!isInProgressExpanded)}
+            selectedBug={selectedBug}
+            onBugSelect={setSelectedBug}
+            isDark={isDark}
+            defaultOpacity={1}
+          />
+
+          {/* Completed Bugs Section */}
+          <BugSection
+            title="Completed"
+            icon={CheckCircle}
+            iconColor="text-green-500"
+            bugs={completedBugs}
+            isExpanded={isCompletedExpanded}
+            onToggle={() => setIsCompletedExpanded(!isCompletedExpanded)}
+            selectedBug={selectedBug}
+            onBugSelect={setSelectedBug}
+            isDark={isDark}
+            defaultOpacity={0.75}
+          />
+
+          {/* Others (Won't Fix) Bugs Section */}
+          <BugSection
+            title="Others"
+            icon={Tag}
+            iconColor="text-gray-500"
+            bugs={othersBugs}
+            isExpanded={isOthersExpanded}
+            onToggle={() => setIsOthersExpanded(!isOthersExpanded)}
+            selectedBug={selectedBug}
+            onBugSelect={setSelectedBug}
+            isDark={isDark}
+            defaultOpacity={0.75}
+          />
+
+          {/* Empty State */}
           {projectBugs.length === 0 && (
             <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
               <Bug className={`w-8 h-8 mx-auto mb-3 ${isDark ? 'text-gray-600' : 'text-gray-400'}`} />
@@ -381,20 +524,145 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
               borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
             }}>
               <div className="flex items-center justify-between">
-                <div>
-                  <h2 className={`text-xl font-semibold ${isDark ? 'text-gray-200' : 'text-gray-900'} mb-1`}>{selectedBug.title}</h2>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-2 mb-1">
+                    {isEditingTitle ? (
+                      <div className="flex items-center space-x-2 flex-1">
+                        <input
+                          type="text"
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          onKeyDown={handleTitleKeyDown}
+                          onBlur={handleSaveTitleEdit}
+                          autoFocus
+                          className={`text-xl font-semibold bg-transparent border rounded px-1 py-0 flex-1 min-w-0 h-8 ${
+                            isDark 
+                              ? 'text-gray-200 border-gray-600 focus:border-red-400' 
+                              : 'text-gray-900 border-gray-300 focus:border-red-500'
+                          } focus:outline-none focus:ring-1 focus:ring-red-500`}
+                        />
+                        <button
+                          onClick={handleSaveTitleEdit}
+                          className={`p-1 rounded hover:bg-gray-700 transition-colors ${
+                            isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
+                          }`}
+                          title="Save"
+                        >
+                          <CheckSquare size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2 flex-1 min-w-0">
+                        <h2 className={`text-xl font-semibold ${isDark ? 'text-gray-200' : 'text-gray-900'} truncate`}>
+                          {selectedBug.title}
+                        </h2>
+                        <button
+                          onClick={handleStartTitleEdit}
+                          className={`p-1 rounded hover:bg-gray-700 transition-colors ${
+                            isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
+                          }`}
+                          title="Rename bug"
+                        >
+                          <Edit size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center space-x-3">
-                    <span className={`px-2 py-1 text-xs font-medium border ${severityColors[selectedBug.severity]}`}>
-                      {selectedBug.severity.toUpperCase()}
-                    </span>
-                    <span className={`px-2 py-1 text-xs font-medium border ${
-                      selectedBug.status === 'open' ? 'bg-red-100 text-red-800 border-red-200' :
-                      selectedBug.status === 'in-progress' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                      selectedBug.status === 'fixed' ? 'bg-green-100 text-green-800 border-green-200' :
-                      'bg-gray-100 text-gray-800 border-gray-200'
-                    }`}>
-                      {selectedBug.status.replace('-', ' ').toUpperCase()}
-                    </span>
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowSeverityPopup(!showSeverityPopup)}
+                        className={`px-2 py-1 text-xs font-medium border hover:shadow-md transition-all cursor-pointer ${severityColors[selectedBug.severity]}`}
+                        title="Click to change severity"
+                      >
+                        {selectedBug.severity.toUpperCase()}
+                      </button>
+                      
+                      {showSeverityPopup && (
+                        <>
+                          <div 
+                            className="fixed inset-0 z-10" 
+                            onClick={() => setShowSeverityPopup(false)}
+                          />
+                          <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20">
+                            <div className="p-2">
+                              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 px-2">Change Severity</div>
+                              {severityOptions.map((option) => (
+                                <button
+                                  key={option.id}
+                                  onClick={() => handleSeverityChange(option.id)}
+                                  className={`w-full text-left p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                    selectedBug.severity === option.id ? 'bg-gray-100 dark:bg-gray-700' : ''
+                                  }`}
+                                >
+                                  <div className="flex items-center space-x-2">
+                                    <span className={`px-2 py-1 text-xs font-medium border rounded ${severityColors[option.id]}`}>
+                                      {option.label.toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-2">
+                                    {option.description}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowStatusPopup(!showStatusPopup)}
+                        className={`px-2 py-1 text-xs font-medium border hover:shadow-md transition-all cursor-pointer ${
+                          selectedBug.status === 'open' ? 'bg-red-100 text-red-800 border-red-200' :
+                          selectedBug.status === 'in-progress' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                          selectedBug.status === 'fixed' ? 'bg-green-100 text-green-800 border-green-200' :
+                          'bg-gray-100 text-gray-800 border-gray-200'
+                        }`}
+                        title="Click to change status"
+                      >
+                        {selectedBug.status.replace('-', ' ').toUpperCase()}
+                      </button>
+                      
+                      {showStatusPopup && (
+                        <>
+                          <div 
+                            className="fixed inset-0 z-10" 
+                            onClick={() => setShowStatusPopup(false)}
+                          />
+                          <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20">
+                            <div className="p-2">
+                              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 px-2">Change Status</div>
+                              {statusOptions.map((option) => (
+                                <button
+                                  key={option.id}
+                                  onClick={() => handleStatusChange(option.id)}
+                                  className={`w-full text-left p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                    selectedBug.status === option.id ? 'bg-gray-100 dark:bg-gray-700' : ''
+                                  }`}
+                                >
+                                  <div className="flex items-center space-x-2">
+                                    <span className={`px-2 py-1 text-xs font-medium border rounded ${
+                                      option.id === 'open' ? 'bg-red-100 text-red-800 border-red-200' :
+                                      option.id === 'in-progress' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                                      option.id === 'fixed' ? 'bg-green-100 text-green-800 border-green-200' :
+                                      'bg-gray-100 text-gray-800 border-gray-200'
+                                    }`}>
+                                      {option.label.toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-2">
+                                    {option.description}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    
                     <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
                       Reported {new Date(selectedBug.createdAt).toLocaleDateString()}
                     </span>
@@ -402,16 +670,29 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
                 </div>
                 <div className="flex items-center space-x-2">
                   {activeSubTab === 'info' && (
-                    <button
-                      onClick={handleSaveBug}
-                      className={`px-4 py-2 text-sm font-medium transition-all duration-200 border ${
-                        isDark 
-                          ? 'bg-green-900 hover:bg-green-800 text-green-200 border-green-800' 
-                          : 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200'
-                      }`}
-                    >
-                      Save Changes
-                    </button>
+                    <>
+                      <button
+                        onClick={handleSaveBug}
+                        className={`px-4 py-2 text-sm font-medium transition-all duration-200 border ${
+                          isDark 
+                            ? 'bg-green-900 hover:bg-green-800 text-green-200 border-green-800' 
+                            : 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200'
+                        }`}
+                      >
+                        Save Changes
+                      </button>
+                      <button
+                        onClick={handleDeleteBug}
+                        className={`px-4 py-2.5 text-sm font-medium transition-all duration-200 border ${
+                          isDark 
+                            ? 'bg-red-900 hover:bg-red-800 text-red-200 border-red-800' 
+                            : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                        }`}
+                        title="Delete Bug"
+                      >
+                        <FiTrash className="w-4 h-4" />
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -543,6 +824,549 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
           </motion.div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteConfirmation}
+        onClose={() => setShowDeleteConfirmation(false)}
+        onConfirm={confirmDeleteBug}
+        title="Delete Bug"
+        message="Are you sure you want to delete this bug? All related information will be permanently removed."
+        itemName={selectedBug?.title}
+      />
     </div>
+  );
+};
+
+// Bug Section Component
+interface BugSectionProps {
+  title: string;
+  icon: React.ElementType;
+  iconColor: string;
+  bugs: BugType[];
+  isExpanded: boolean;
+  onToggle: () => void;
+  selectedBug: BugType | null;
+  onBugSelect: (bug: BugType) => void;
+  isDark: boolean;
+  defaultOpacity: number;
+}
+
+const BugSection: React.FC<BugSectionProps> = ({
+  title,
+  icon: Icon,
+  iconColor,
+  bugs,
+  isExpanded,
+  onToggle,
+  selectedBug,
+  onBugSelect,
+  isDark,
+  defaultOpacity
+}) => {
+  if (bugs.length === 0) return null;
+
+  return (
+    <div>
+      <button
+        onClick={onToggle}
+        className={`w-full flex items-center justify-between py-2 px-3 text-sm font-medium transition-all duration-200 hover:${
+          isDark ? 'bg-gray-800' : 'bg-gray-50'
+        } rounded`}
+      >
+        <div className="flex items-center space-x-2">
+          {isExpanded ? (
+            <ChevronDown size={16} className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`} />
+          ) : (
+            <ChevronRight size={16} className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`} />
+          )}
+          <Icon size={16} className={iconColor} />
+          <span className={`${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{title}</span>
+        </div>
+        <span className={`text-xs px-2 py-1 rounded-full ${
+          isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-600'
+        }`}>
+          {bugs.length}
+        </span>
+      </button>
+
+      {isExpanded && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.2 }}
+          className="space-y-1 mt-2 pl-2"
+        >
+          {bugs.map((bug) => {
+            const StatusIcon = statusIcons[bug.status];
+            return (
+              <motion.button
+                key={bug.id}
+                onClick={() => onBugSelect(bug)}
+                className={`w-full text-left p-3 transition-all duration-200 border-l-2 hover:opacity-100 ${
+                  selectedBug?.id === bug.id
+                    ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
+                    : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
+                }`}
+                style={{ opacity: defaultOpacity }}
+                whileHover={{ x: 2 }}
+                whileTap={{ scale: 0.99 }}
+              >
+                <div className="flex items-center space-x-3">
+                  <StatusIcon size={14} className={`${
+                    bug.status === 'open' ? 'text-red-500' :
+                    bug.status === 'in-progress' ? 'text-blue-500' :
+                    bug.status === 'fixed' ? 'text-green-500' :
+                    'text-gray-500'
+                  }`} />
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-sm font-medium ${
+                      defaultOpacity === 1 
+                        ? (isDark ? 'text-gray-200' : 'text-gray-800')
+                        : (isDark ? 'text-gray-300' : 'text-gray-700')
+                    } truncate`}>
+                      {bug.title}
+                    </div>
+                    <div className="flex items-center space-x-2 mt-0.5">
+                      <span className={`text-xs px-2 py-0.5 rounded ${severityColors[bug.severity]}`}>
+                        {bug.severity}
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded ${
+                        bug.status === 'open' ? 'bg-red-100 text-red-800' :
+                        bug.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
+                        bug.status === 'fixed' ? 'bg-green-100 text-green-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {bug.status.replace('-', ' ')}
+                      </span>
+                      <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
+                      <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                        {new Date(bug.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </motion.button>
+            );
+          })}
+        </motion.div>
+      )}
+    </div>
+  );
+};
+
+// Bug-specific Kanban Board Component
+interface BugKanbanBoardProps {
+  bug: BugType;
+  project: Project;
+}
+
+const BugKanbanBoard: React.FC<BugKanbanBoardProps> = ({ bug, project }) => {
+  const { tasks, createTask, updateTask, deleteTask } = useSupabaseProjects();
+  const [localTasks, setLocalTasks] = useState<Task[]>([]);
+  
+  // Filter tasks for this specific bug
+  const bugTasks = React.useMemo(() => 
+    tasks.filter(t => t.projectId === project.id && t.bugId === bug.id), 
+    [tasks, project.id, bug.id]
+  );
+
+  // Sync with Supabase when local tasks change
+  React.useEffect(() => {
+    setLocalTasks(bugTasks);
+  }, [bugTasks]);
+
+  const handleTasksChange = (newTasks: Task[]) => {
+    setLocalTasks(newTasks);
+    
+    // Find what changed and sync with Supabase
+    newTasks.forEach(task => {
+      const originalTask = bugTasks.find(t => t.id === task.id);
+      if (originalTask && originalTask.status !== task.status) {
+        updateTask(task.id, { status: task.status });
+      }
+      if (!originalTask && task.projectId === '') {
+        // New task - create with correct status and link to bug
+        createTask(project.id, task.title, task.description, task.priority, task.status, undefined, bug.id);
+      }
+    });
+
+    // Check for deleted tasks
+    bugTasks.forEach(originalTask => {
+      if (!newTasks.find(t => t.id === originalTask.id)) {
+        deleteTask(originalTask.id);
+      }
+    });
+  };
+
+  const statusColumns = [
+    { 
+      id: 'todo' as const, 
+      label: 'TODO', 
+      headingColor: 'text-yellow-200'
+    },
+    { 
+      id: 'in-progress' as const, 
+      label: 'In progress', 
+      headingColor: 'text-blue-200'
+    },
+    { 
+      id: 'fix-later' as const, 
+      label: 'Fix Later', 
+      headingColor: 'text-orange-200'
+    },
+    { 
+      id: 'done' as const, 
+      label: 'Complete', 
+      headingColor: 'text-emerald-200'
+    },
+  ];
+
+  return (
+    <div className="h-full w-full flex flex-col text-neutral-50" style={{ backgroundColor: '#0a0a0a' }}>
+      <div className="p-4 border-b border-neutral-700 flex-shrink-0">
+        <h3 className="text-lg font-semibold text-neutral-200 mb-2">
+          Tasks for: {bug.title}
+        </h3>
+        <p className="text-sm text-neutral-400">
+          Manage tasks specific to this bug report
+        </p>
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden p-4">
+        <div 
+          className="flex h-full w-full [&::-webkit-scrollbar]:hidden" 
+          style={{ 
+            scrollbarWidth: 'none', 
+            msOverflowStyle: 'none'
+          }}
+        >
+          {statusColumns.map((column) => (
+            <BugColumn
+              key={column.id}
+              title={column.label}
+              headingColor={column.headingColor}
+              tasks={localTasks}
+              column={column.id}
+              setTasks={handleTasksChange}
+              bugId={bug.id}
+              projectId={project.id}
+            />
+          ))}
+          <BugBurnBarrel setTasks={handleTasksChange} allTasks={localTasks} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Bug-specific Column Component (adapted from TasksTab)
+interface BugColumnProps {
+  title: string;
+  headingColor: string;
+  tasks: Task[];
+  column: Task['status'];
+  setTasks: (tasks: Task[]) => void;
+  bugId: string;
+  projectId: string;
+}
+
+const BugColumn: React.FC<BugColumnProps> = ({
+  title,
+  headingColor,
+  tasks,
+  column,
+  setTasks,
+  bugId,
+  projectId,
+}) => {
+  const [active, setActive] = useState(false);
+
+  const handleDragStart = (e: React.DragEvent, task: Task) => {
+    e.dataTransfer.setData("taskId", task.id);
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    const taskId = e.dataTransfer.getData("taskId");
+
+    setActive(false);
+    clearHighlights();
+
+    const indicators = getIndicators();
+    const { element } = getNearestIndicator(e, indicators);
+
+    const before = element.dataset.before || "-1";
+
+    if (before !== taskId) {
+      let copy = [...tasks];
+
+      let taskToTransfer = copy.find((c) => c.id === taskId);
+      if (!taskToTransfer) return;
+      taskToTransfer = { ...taskToTransfer, status: column };
+
+      copy = copy.filter((c) => c.id !== taskId);
+
+      const moveToBack = before === "-1";
+
+      if (moveToBack) {
+        copy.push(taskToTransfer);
+      } else {
+        const insertAtIndex = copy.findIndex((el) => el.id === before);
+        if (insertAtIndex === undefined) return;
+
+        copy.splice(insertAtIndex, 0, taskToTransfer);
+      }
+
+      setTasks(copy);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    highlightIndicator(e);
+    setActive(true);
+  };
+
+  const clearHighlights = (els?: HTMLElement[]) => {
+    const indicators = els || getIndicators();
+    indicators.forEach((i) => {
+      i.style.opacity = "0";
+    });
+  };
+
+  const highlightIndicator = (e: React.DragEvent) => {
+    const indicators = getIndicators();
+    clearHighlights(indicators);
+    const el = getNearestIndicator(e, indicators);
+    el.element.style.opacity = "1";
+  };
+
+  const getNearestIndicator = (e: React.DragEvent, indicators: HTMLElement[]) => {
+    const DISTANCE_OFFSET = 50;
+
+    const el = indicators.reduce(
+      (closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = e.clientY - (box.top + DISTANCE_OFFSET);
+
+        if (offset < 0 && offset > closest.offset) {
+          return { offset: offset, element: child };
+        } else {
+          return closest;
+        }
+      },
+      {
+        offset: Number.NEGATIVE_INFINITY,
+        element: indicators[indicators.length - 1],
+      }
+    );
+
+    return el;
+  };
+
+  const getIndicators = () => {
+    return Array.from(
+      document.querySelectorAll(
+        `[data-column="${column}"]`
+      ) as unknown as HTMLElement[]
+    );
+  };
+
+  const handleDragLeave = () => {
+    clearHighlights();
+    setActive(false);
+  };
+
+  const filteredTasks = tasks.filter((c) => c.status === column);
+
+  return (
+    <div className="flex-1 min-w-0 h-full flex flex-col mx-2">
+      <div className="mb-3 flex items-center justify-between flex-shrink-0">
+        <h3 className={`font-medium ${headingColor} truncate`}>{title}</h3>
+        <span className="rounded text-sm text-neutral-400 ml-2">
+          {filteredTasks.length}
+        </span>
+      </div>
+      <div
+        onDrop={handleDragEnd}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        className={`flex-1 min-h-0 overflow-y-auto transition-colors ${
+          active ? "bg-neutral-800/50" : "bg-neutral-800/0"
+        }`}
+      >
+        {filteredTasks.map((c) => {
+          return <BugTaskCard key={c.id} {...c} handleDragStart={handleDragStart} />;
+        })}
+        <BugDropIndicator beforeId={null} column={column} />
+        <BugAddCard 
+          column={column} 
+          setTasks={setTasks} 
+          allTasks={tasks}
+          bugId={bugId}
+          projectId={projectId}
+        />
+      </div>
+    </div>
+  );
+};
+
+// Bug-specific Task Card Component
+interface BugTaskCardProps extends Task {
+  handleDragStart: (e: React.DragEvent, task: Task) => void;
+}
+
+const BugTaskCard: React.FC<BugTaskCardProps> = ({ id, title, status, handleDragStart, ...task }) => {
+  return (
+    <>
+      <BugDropIndicator beforeId={id} column={status} />
+      <motion.div
+        layout
+        layoutId={id}
+        draggable="true"
+        onDragStart={(e) => handleDragStart(e as any, { id, title, status, ...task })}
+        className="cursor-grab rounded border border-neutral-700 bg-neutral-800 p-3 active:cursor-grabbing"
+      >
+        <p className="text-sm text-neutral-100">{title}</p>
+      </motion.div>
+    </>
+  );
+};
+
+// Bug-specific Drop Indicator Component
+interface BugDropIndicatorProps {
+  beforeId: string | null;
+  column: string;
+}
+
+const BugDropIndicator: React.FC<BugDropIndicatorProps> = ({ beforeId, column }) => {
+  return (
+    <div
+      data-before={beforeId || "-1"}
+      data-column={column}
+      className="my-0.5 h-0.5 w-full bg-violet-400 opacity-0"
+    />
+  );
+};
+
+// Bug-specific Burn Barrel Component
+interface BugBurnBarrelProps {
+  setTasks: (tasks: Task[]) => void;
+  allTasks: Task[];
+}
+
+const BugBurnBarrel: React.FC<BugBurnBarrelProps> = ({
+  setTasks,
+  allTasks,
+}) => {
+  const [active, setActive] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setActive(true);
+  };
+
+  const handleDragLeave = () => {
+    setActive(false);
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    const taskId = e.dataTransfer.getData("taskId");
+
+    setTasks(allTasks.filter((c: Task) => c.id !== taskId));
+
+    setActive(false);
+  };
+        
+  return (
+    <div
+      onDrop={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      className={`mt-10 grid h-32 w-32 shrink-0 place-content-center rounded border text-2xl ${
+        active
+          ? "border-red-800 bg-red-800/20 text-red-500"
+          : "border-neutral-500 bg-neutral-500/20 text-neutral-500"
+      }`}
+    >
+      {active ? <FaFire className="animate-bounce" /> : <FiTrash />}
+    </div>
+  );
+};
+
+// Bug-specific Add Card Component
+interface BugAddCardProps {
+  column: Task['status'];
+  setTasks: (tasks: Task[]) => void;
+  allTasks: Task[];
+  bugId: string;
+  projectId: string;
+}
+
+const BugAddCard: React.FC<BugAddCardProps> = ({ column, setTasks, allTasks, bugId, projectId }) => {
+  const [text, setText] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    if (!text.trim().length) return;
+
+    const newTask: Task = {
+      id: Math.random().toString(),
+      projectId: projectId,
+      title: text.trim(),
+      description: '',
+      status: column,
+      priority: 'medium',
+      bugId: bugId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    setTasks([...allTasks, newTask]);
+
+    setAdding(false);
+    setText("");
+  };
+
+  return (
+    <>
+      {adding ? (
+        <motion.form layout onSubmit={handleSubmit}>
+          <textarea
+            onChange={(e) => setText(e.target.value)}
+            autoFocus
+            placeholder="Add new task..."
+            className="w-full rounded border border-violet-400 bg-violet-400/20 p-3 text-sm text-neutral-50 placeholder-violet-300 focus:outline-0"
+          />
+          <div className="mt-1.5 flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => setAdding(false)}
+              className="px-3 py-1.5 text-xs text-neutral-400 transition-colors hover:text-neutral-50"
+            >
+              Close
+            </button>
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 rounded bg-neutral-50 px-3 py-1.5 text-xs text-neutral-950 transition-colors hover:bg-neutral-300"
+            >
+              <span>Add</span>
+              <FiPlus />
+            </button>
+          </div>
+        </motion.form>
+      ) : (
+        <motion.button
+          layout
+          onClick={() => setAdding(true)}
+          className="flex w-full items-center gap-1.5 px-3 py-1.5 text-xs text-neutral-400 transition-colors hover:text-neutral-50"
+        >
+          <span>Add card</span>
+          <FiPlus />
+        </motion.button>
+      )}
+    </>
   );
 };
