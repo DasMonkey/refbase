@@ -369,6 +369,17 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
         );
       };
 
+      // Sanitize content to escape problematic XML-like tags
+      const sanitizeContent = (text: string) => {
+        if (!text) return '*No content*';
+        
+        // Escape common problematic tags that React might interpret as components
+        return text
+          .replace(/<([a-zA-Z]+[a-zA-Z0-9]*)\b([^>]*)>/g, '&lt;$1$2&gt;')  // Opening tags
+          .replace(/<\/([a-zA-Z]+[a-zA-Z0-9]*)>/g, '&lt;/$1&gt;')           // Closing tags
+          .replace(/<([a-zA-Z]+[a-zA-Z0-9]*)\s*\/>/g, '&lt;$1 /&gt;');      // Self-closing tags
+      };
+
       return (
         <div 
           className="prose max-w-none" 
@@ -403,7 +414,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
               }
             }}
           >
-            {content || '*No content*'}
+            {sanitizeContent(content)}
           </Markdown>
         </div>
       );
@@ -504,6 +515,11 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
               </div>
             )}
           </div>
+          
+          {/* Auto-save indicator */}
+          <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} ml-3`}>
+            Auto-saved
+          </span>
         </div>
 
         {/* View Mode Toggles */}

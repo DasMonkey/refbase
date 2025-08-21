@@ -710,57 +710,61 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
       <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
         {selectedBug ? (
           <>
-            {/* Bug Header */}
-            <div className={`px-6 py-4 border-b flex-shrink-0`} style={{ 
-              backgroundColor: isDark ? '#111111' : '#ffffff',
-              borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
+            {/* Combined Bug Header & Navigation */}
+            <div className={`px-6 py-4 flex-shrink-0`} style={{ 
+              backgroundColor: isDark ? '#111111' : '#ffffff'
             }}>
-              <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2 mb-1">
-                    {isEditingTitle ? (
-                      <div className="flex items-center space-x-2 flex-1">
-                        <input
-                          type="text"
-                          value={editingTitle}
-                          onChange={(e) => setEditingTitle(e.target.value)}
-                          onKeyDown={handleTitleKeyDown}
-                          onBlur={handleSaveTitleEdit}
-                          autoFocus
-                          className={`text-xl font-semibold bg-transparent border rounded px-1 py-0 flex-1 min-w-0 h-8 ${
-                            isDark 
-                              ? 'text-gray-200 border-gray-600 focus:border-red-400' 
-                              : 'text-gray-900 border-gray-300 focus:border-red-500'
-                          } focus:outline-none focus:ring-1 focus:ring-red-500`}
-                        />
-                        <button
-                          onClick={handleSaveTitleEdit}
-                          className={`p-1 rounded hover:bg-gray-700 transition-colors ${
-                            isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
-                          }`}
-                          title="Save"
-                        >
-                          <CheckSquare size={16} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center space-x-2 flex-1 min-w-0">
-                        <h2 className={`text-xl font-semibold ${isDark ? 'text-gray-200' : 'text-gray-900'} truncate`}>
-                          {selectedBug.title}
-                        </h2>
-                        <button
-                          onClick={handleStartTitleEdit}
-                          className={`p-1 rounded hover:bg-gray-700 transition-colors ${
-                            isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
-                          }`}
-                          title="Rename bug"
-                        >
-                          <Edit size={16} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-3">
+              {/* Title Row with inline metadata */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-3">
+                  {isEditingTitle ? (
+                    <>
+                      <input
+                        type="text"
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onKeyDown={handleTitleKeyDown}
+                        onBlur={handleSaveTitleEdit}
+                        autoFocus
+                        className={`text-xl font-semibold bg-transparent border rounded px-2 py-0 h-8 ${
+                          isDark 
+                            ? 'text-gray-200 border-gray-600 focus:border-red-400' 
+                            : 'text-gray-900 border-gray-300 focus:border-red-500'
+                        } focus:outline-none focus:ring-1 focus:ring-red-500`}
+                        style={{ 
+                          width: `${Math.max(150, editingTitle.length * 11 + 20)}px`,
+                          maxWidth: '300px'
+                        }}
+                      />
+                      <button
+                        onClick={handleSaveTitleEdit}
+                        className={`p-1 rounded hover:bg-gray-700 transition-colors ${
+                          isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
+                        }`}
+                        title="Save"
+                      >
+                        <CheckSquare size={16} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className={`text-xl font-semibold ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>
+                        {selectedBug.title}
+                      </h2>
+                      <button
+                        onClick={handleStartTitleEdit}
+                        className={`p-1 rounded hover:bg-gray-700 transition-colors ${
+                          isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
+                        }`}
+                        title="Rename bug"
+                      >
+                        <Edit size={16} />
+                      </button>
+                    </>
+                  )}
+                  
+                  {/* Inline metadata - compact */}
+                  <div className="flex items-center space-x-2 ml-2">
                     <div className="relative">
                       <button
                         onClick={() => setShowSeverityPopup(!showSeverityPopup)}
@@ -860,41 +864,24 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  {activeSubTab === 'info' && (
-                    <>
-                      <button
-                        onClick={handleSaveBug}
-                        className={`px-4 py-2 text-sm font-medium transition-all duration-200 border ${
-                          isDark 
-                            ? 'bg-green-900 hover:bg-green-800 text-green-200 border-green-800' 
-                            : 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200'
-                        }`}
-                      >
-                        Save Changes
-                      </button>
-                      <button
-                        onClick={handleDeleteBug}
-                        className={`px-4 py-2.5 text-sm font-medium transition-all duration-200 border ${
-                          isDark 
-                            ? 'bg-red-900 hover:bg-red-800 text-red-200 border-red-800' 
-                            : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
-                        }`}
-                        title="Delete Bug"
-                      >
-                        <FiTrash className="w-4 h-4" />
-                      </button>
-                    </>
-                  )}
-                </div>
+                
+                {/* Delete button aligned right */}
+                {activeSubTab === 'info' && (
+                  <button
+                    onClick={handleDeleteBug}
+                    className={`px-4 py-2.5 text-sm font-medium transition-all duration-200 border ${
+                      isDark 
+                        ? 'bg-red-900 hover:bg-red-800 text-red-200 border-red-800' 
+                        : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                    }`}
+                    title="Delete Bug"
+                  >
+                    <FiTrash className="w-4 h-4" />
+                  </button>
+                )}
               </div>
-            </div>
 
-            {/* Sub Navigation */}
-            <div className={`px-6 py-3 border-b flex-shrink-0`} style={{ 
-              backgroundColor: isDark ? '#0f0f0f' : '#f8fafc',
-              borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
-            }}>
+              {/* Sub Navigation Row */}
               <nav className="flex space-x-1">
                 {subTabs.map((tab) => {
                   const Icon = tab.icon;
