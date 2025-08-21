@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, FileText, Edit3, Trash2, Brain, MessageSquare, Upload, History, Info, CheckSquare, Edit } from 'lucide-react';
+import { Plus, FileText, Edit3, Brain, MessageSquare, Upload, History, Info, CheckSquare, Edit, Search, Filter } from 'lucide-react';
 import { FiPlus, FiTrash } from 'react-icons/fi';
 import { FaFire } from 'react-icons/fa';
 import { Project, Feature, FeatureFile, Task } from '../types';
@@ -8,6 +8,23 @@ import { useSupabaseProjects } from '../hooks/useSupabaseProjects';
 import { useTheme } from '../contexts/ThemeContext';
 import { EnhancedEditor } from './ui/EnhancedEditor';
 import { DeleteConfirmationModal } from './ui/DeleteConfirmationModal';
+
+// Custom sorting icons
+const SortAscIcon = ({ size = 14, className = "" }) => (
+  <svg width={size} height={size} viewBox="0 0 14 14" className={className}>
+    <rect x="2" y="10" width="10" height="1.5" rx="0.75" />
+    <rect x="2" y="6" width="7" height="1.5" rx="0.75" />
+    <rect x="2" y="2" width="4" height="1.5" rx="0.75" />
+  </svg>
+);
+
+const SortDescIcon = ({ size = 14, className = "" }) => (
+  <svg width={size} height={size} viewBox="0 0 14 14" className={className}>
+    <rect x="2" y="2" width="10" height="1.5" rx="0.75" />
+    <rect x="2" y="6" width="7" height="1.5" rx="0.75" />
+    <rect x="2" y="10" width="4" height="1.5" rx="0.75" />
+  </svg>
+);
 
 interface FeaturesTabProps {
   project: Project;
@@ -33,7 +50,7 @@ const featureFileTypes = [
 ];
 
 export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
-  const { features, featureFiles, createFeature, updateFeature, deleteFeature, createFeatureFile, updateFeatureFile, deleteFeatureFile } = useSupabaseProjects();
+  const { features, featureFiles, createFeature, updateFeature, deleteFeature, createFeatureFile, updateFeatureFile } = useSupabaseProjects();
   const { isDark } = useTheme();
   const [selectedFeature, setSelectedFeature] = useState<Feature | null>(() => {
     const savedFeatureId = localStorage.getItem(`selectedFeature_${project.id}`);
@@ -57,9 +74,84 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
   const [newFileName, setNewFileName] = useState('');
   const [newFileType, setNewFileType] = useState<FeatureFile['type']>('requirement');
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
+  const [showFilterPopup, setShowFilterPopup] = useState(false);
+  const [sortBy, setSortBy] = useState<'name' | 'created' | 'updated'>('created');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [showFileFilterPopup, setShowFileFilterPopup] = useState(false);
+  const [fileSortBy, setFileSortBy] = useState<'name' | 'created' | 'updated'>('created');
+  const [fileSortOrder, setFileSortOrder] = useState<'asc' | 'desc'>('desc');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Check if filters are active (not default)
+  const isFilterActive = sortBy !== 'created' || sortOrder !== 'desc';
+  const isFileFilterActive = fileSortBy !== 'created' || fileSortOrder !== 'desc';
+
+  // Reset filters to default
+  const resetFilter = () => {
+    setSortBy('created');
+    setSortOrder('desc');
+  };
+
+  const resetFileFilter = () => {
+    setFileSortBy('created');
+    setFileSortOrder('desc');
+  };
+
   const projectFeatures = features.filter(f => f.projectId === project.id);
+  
+  // Filter and sort features based on search query and sort options
+  const filteredFeatures = projectFeatures
+    .filter(feature => 
+      searchQuery === '' || 
+      feature.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      feature.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      feature.content?.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'name':
+          comparison = a.title.localeCompare(b.title);
+          break;
+        case 'created':
+          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+        case 'updated':
+          comparison = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+          break;
+      }
+      
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+  // Filter and sort feature files based on search query and sort options
+  const currentFeatureFiles = selectedFeature ? featureFiles.filter(f => f.featureId === selectedFeature.id) : [];
+  const filteredFeatureFiles = currentFeatureFiles
+    .filter(file => 
+      fileSearchQuery === '' || 
+      file.name?.toLowerCase().includes(fileSearchQuery.toLowerCase()) ||
+      file.content?.toLowerCase().includes(fileSearchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      let comparison = 0;
+      
+      switch (fileSortBy) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'created':
+          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+        case 'updated':
+          comparison = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+          break;
+      }
+      
+      return fileSortOrder === 'asc' ? comparison : -comparison;
+    });
 
   // Restore selected feature when features are loaded
   useEffect(() => {
@@ -105,8 +197,10 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
         { name: 'implementation.md', type: 'implementation' as const },
       ];
       
+      const createdFiles = [];
       for (const file of defaultFiles) {
-        await createFeatureFile(feature.id, file.name, file.type, feature);
+        const createdFile = await createFeatureFile(feature.id, file.name, file.type, feature);
+        createdFiles.push(createdFile);
       }
       
       setSelectedFeature(feature);
@@ -114,20 +208,11 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
       setNewFeatureTitle('');
       setNewFeatureType('custom');
       
-      // Auto-select the first file (requirements)
-      const firstFile = featureFiles.find(ff => ff.featureId === feature.id && ff.name === 'requirements.md');
+      // Auto-select the first file (requirements) - use the actual created file
+      const firstFile = createdFiles.find(file => file.name === 'requirements.md');
       if (firstFile) {
         setSelectedFeatureFile(firstFile);
       }
-    }
-  };
-
-  const handleSaveFeature = () => {
-    if (selectedFeature) {
-      updateFeature(selectedFeature.id, { 
-        content: selectedFeature.content,
-        language: selectedFeature.language 
-      });
     }
   };
 
@@ -141,18 +226,6 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
     if (selectedFeature) {
       deleteFeature(selectedFeature.id);
       setSelectedFeature(null);
-    }
-  };
-
-  const handleContentChange = (content: string) => {
-    if (selectedFeature) {
-      setSelectedFeature({ ...selectedFeature, content });
-    }
-  };
-
-  const handleLanguageChange = (language: string) => {
-    if (selectedFeature) {
-      setSelectedFeature({ ...selectedFeature, language });
     }
   };
 
@@ -250,9 +323,9 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
     if (!selectedFeature) return null;
 
     // Get files for this feature
-    const currentFeatureFiles = featureFiles
-      .filter(ff => ff.featureId === selectedFeature.id)
-      .sort((a, b) => a.order - b.order);
+    // const currentFeatureFiles = featureFiles
+    //   .filter(ff => ff.featureId === selectedFeature.id)
+    //   .sort((a, b) => a.order - b.order);
 
     return (
       <div className="flex h-full w-full overflow-hidden">
@@ -261,59 +334,195 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
           backgroundColor: isDark ? '#0f0f0f' : '#f8fafc',
           borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
         }}>
-          <div className={`p-3 border-b`} style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
+          <div className={`p-4 border-b`} style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
             <button
               onClick={() => setShowCreateFileModal(true)}
-              className={`w-full flex items-center justify-center py-2 px-3 text-xs font-medium transition-all duration-200 border rounded ${
+              className={`w-full flex items-center justify-center py-2.5 px-4 text-sm font-medium transition-all duration-200 border ${
                 isDark 
-                  ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700 hover:border-gray-600' 
-                  : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200 hover:border-gray-300'
+                  ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700 hover:border-gray-600' 
+                  : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-300'
               }`}
             >
-              <Plus size={14} className="mr-1.5" />
+              <Plus size={16} className="mr-2" />
               <span>New File</span>
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {currentFeatureFiles.map((file) => {
-              const fileTypeInfo = featureFileTypes.find(ft => ft.id === file.type);
-              const Icon = fileTypeInfo?.icon || FileText;
+          <div className={`p-3`}>
+            <div className="flex items-center space-x-2">
+              <div className="relative flex-1">
+                <Search 
+                  size={16} 
+                  className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
+                    isDark ? 'text-gray-400' : 'text-gray-500'
+                  }`} 
+                />
+                <input
+                  type="text"
+                  value={fileSearchQuery}
+                  onChange={(e) => setFileSearchQuery(e.target.value)}
+                  placeholder="Search files..."
+                  className={`w-full pl-10 pr-4 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200`}
+                  style={{ 
+                    borderColor: isDark ? '#2a2a2a' : '#e2e8f0',
+                    backgroundColor: isDark ? '#111111' : '#ffffff',
+                    color: isDark ? '#ffffff' : '#000000'
+                  }}
+                />
+              </div>
               
-              return (
-                <motion.button
-                  key={file.id}
-                  onClick={() => setSelectedFeatureFile(file)}
-                  className={`w-full text-left p-2 transition-all duration-200 border-l-2 rounded-r ${
-                    selectedFeatureFile?.id === file.id
-                      ? `${isDark ? 'bg-gray-800 border-l-blue-400' : 'bg-gray-100 border-l-blue-500'}`
-                      : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
+              <div className="relative">
+                <button
+                  onClick={() => setShowFileFilterPopup(!showFileFilterPopup)}
+                  className={`relative p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                    isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
                   }`}
-                  whileHover={{ x: 1 }}
-                  whileTap={{ scale: 0.99 }}
                 >
-                  <div className="flex items-center space-x-2">
-                    <Icon size={12} className={`${isDark ? 'text-gray-400' : 'text-gray-500'} flex-shrink-0`} />
-                    <div className="min-w-0 flex-1">
-                      <div className={`text-xs font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'} truncate`}>
-                        {file.name}
-                      </div>
-                      <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} capitalize truncate`}>
-                        {fileTypeInfo?.label || file.type}
+                  <Filter size={16} />
+                  {isFileFilterActive && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-gray-800"></div>
+                  )}
+                </button>
+                
+                {showFileFilterPopup && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-50" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowFileFilterPopup(false);
+                      }}
+                    />
+                    <div 
+                      className="absolute top-full right-0 mt-1 w-48 rounded-lg shadow-xl z-[9999]"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ 
+                        backgroundColor: isDark ? '#1f2937' : '#ffffff',
+                        border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`
+                      }}
+                    >
+                      <div className="p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Sort by</div>
+                          {isFileFilterActive && (
+                            <button
+                              onClick={() => {
+                                resetFileFilter();
+                                setShowFileFilterPopup(false);
+                              }}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                isDark ? 'text-red-400 hover:bg-red-900/20' : 'text-red-600 hover:bg-red-50'
+                              }`}
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          {[
+                            { key: 'name' as const, label: 'Name' },
+                            { key: 'created' as const, label: 'Date Created' },
+                            { key: 'updated' as const, label: 'Date Updated' }
+                          ].map((option) => (
+                            <button
+                              key={option.key}
+                              onClick={() => {
+                                if (fileSortBy === option.key) {
+                                  setFileSortOrder(fileSortOrder === 'asc' ? 'desc' : 'asc');
+                                } else {
+                                  setFileSortBy(option.key);
+                                  setFileSortOrder('desc');
+                                }
+                                setShowFileFilterPopup(false);
+                              }}
+                              className={`w-full flex items-center justify-between p-2 text-sm rounded transition-colors ${
+                                fileSortBy === option.key 
+                                  ? (isDark ? 'bg-gray-700' : 'bg-gray-100') 
+                                  : (isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-100')
+                              }`}
+                            >
+                              <span className={isDark ? 'text-gray-200' : 'text-gray-800'}>{option.label}</span>
+                              {fileSortBy === option.key && (
+                                fileSortOrder === 'desc' 
+                                  ? <SortDescIcon size={14} className={isDark ? 'fill-gray-200' : 'fill-gray-800'} />
+                                  : <SortAscIcon size={14} className={isDark ? 'fill-gray-200' : 'fill-gray-800'} />
+                              )}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </motion.button>
-              );
-            })}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
 
-            {currentFeatureFiles.length === 0 && (
-              <div className={`text-center py-8 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-                <FileText className={`w-6 h-6 mx-auto mb-2 ${isDark ? 'text-gray-600' : 'text-gray-400'}`} />
-                <p className="text-xs font-medium mb-1">No files yet</p>
-                <p className="text-xs">Create your first file</p>
+          <div className={`flex-1 overflow-y-auto px-3 pb-3 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}>
+            <div className="space-y-1">
+              {filteredFeatureFiles.map((file) => {
+                const fileTypeInfo = featureFileTypes.find(ft => ft.id === file.type);
+                const Icon = fileTypeInfo?.icon || FileText;
+                
+                return (
+                  <motion.button
+                    key={file.id}
+                    onClick={() => setSelectedFeatureFile(file)}
+                    className={`w-full text-left p-3 transition-all duration-100 border-l-2 ${
+                      selectedFeatureFile?.id === file.id
+                        ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
+                        : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
+                    }`}
+                    whileHover={{ x: 8 }}
+                    transition={{ duration: 0.08, ease: "easeOut" }}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <Icon size={14} className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'} truncate`}>{file.name}</div>
+                        <div className="flex items-center space-x-2 mt-0.5">
+                          <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} capitalize`}>
+                            {fileTypeInfo?.label || file.type}
+                          </span>
+                          <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
+                          <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                            {new Date(file.updatedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.button>
+                );
+              })}
+            </div>
+
+            {filteredFeatureFiles.length === 0 && (
+              <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                <FileText className={`w-8 h-8 mx-auto mb-3 ${isDark ? 'text-gray-600' : 'text-gray-400'}`} />
+                {fileSearchQuery ? (
+                  <>
+                    <p className="text-sm font-medium mb-1">No files found</p>
+                    <p className="text-xs">Try a different search term</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium mb-1">No files yet</p>
+                    <p className="text-xs">Create your first file</p>
+                  </>
+                )}
               </div>
             )}
+          </div>
+          
+          {/* File Counter */}
+          <div className={`px-3 py-2 border-t text-center`} style={{ 
+            borderColor: isDark ? '#2a2a2a' : '#e2e8f0',
+            backgroundColor: isDark ? '#0f0f0f' : '#f8fafc'
+          }}>
+            <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+              {filteredFeatureFiles.length} {filteredFeatureFiles.length === 1 ? 'file' : 'files'}
+              {fileSearchQuery && ` (filtered from ${featureFiles.filter(f => f.featureId === selectedFeature?.id).length})`}
+            </span>
           </div>
         </div>
 
@@ -371,6 +580,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
                       onLanguageChange={handleFileLanguageChange}
                       placeholder={`Add ${selectedFeatureFile.type} details...`}
                       fileName={selectedFeatureFile.name}
+                      onBlur={handleSaveFeatureFile}
                     />
                   </div>
                 </div>
@@ -552,21 +762,131 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3">
+        <div className={`p-3`}>
+          <div className="flex items-center space-x-2">
+            <div className="relative flex-1">
+              <Search 
+                size={16} 
+                className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
+                  isDark ? 'text-gray-400' : 'text-gray-500'
+                }`} 
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search features..."
+                className={`w-full pl-10 pr-4 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200`}
+                style={{ 
+                  borderColor: isDark ? '#2a2a2a' : '#e2e8f0',
+                  backgroundColor: isDark ? '#111111' : '#ffffff',
+                  color: isDark ? '#ffffff' : '#000000'
+                }}
+              />
+            </div>
+            
+            <div className="relative">
+              <button
+                onClick={() => setShowFilterPopup(!showFilterPopup)}
+                className={`relative p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Filter size={16} />
+                {isFilterActive && (
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-gray-800"></div>
+                )}
+              </button>
+              
+              {showFilterPopup && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-50" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowFilterPopup(false);
+                    }}
+                  />
+                  <div 
+                    className="absolute top-full right-0 mt-1 w-48 rounded-lg shadow-xl z-[9999]"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ 
+                      backgroundColor: isDark ? '#1f2937' : '#ffffff',
+                      border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`
+                    }}
+                  >
+                    <div className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Sort by</div>
+                        {isFilterActive && (
+                          <button
+                            onClick={() => {
+                              resetFilter();
+                              setShowFilterPopup(false);
+                            }}
+                            className={`text-xs px-2 py-1 rounded transition-colors ${
+                              isDark ? 'text-red-400 hover:bg-red-900/20' : 'text-red-600 hover:bg-red-50'
+                            }`}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        {[
+                          { key: 'name' as const, label: 'Name' },
+                          { key: 'created' as const, label: 'Date Created' },
+                          { key: 'updated' as const, label: 'Date Updated' }
+                        ].map((option) => (
+                          <button
+                            key={option.key}
+                            onClick={() => {
+                              if (sortBy === option.key) {
+                                setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                              } else {
+                                setSortBy(option.key);
+                                setSortOrder('desc');
+                              }
+                              setShowFilterPopup(false);
+                            }}
+                            className={`w-full flex items-center justify-between p-2 text-sm rounded transition-colors ${
+                              sortBy === option.key 
+                                ? (isDark ? 'bg-gray-700' : 'bg-gray-100') 
+                                : (isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-100')
+                            }`}
+                          >
+                            <span className={isDark ? 'text-gray-200' : 'text-gray-800'}>{option.label}</span>
+                            {sortBy === option.key && (
+                              sortOrder === 'desc' 
+                                ? <SortDescIcon size={14} className={isDark ? 'fill-gray-200' : 'fill-gray-800'} />
+                                : <SortAscIcon size={14} className={isDark ? 'fill-gray-200' : 'fill-gray-800'} />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className={`flex-1 overflow-y-auto px-3 pb-3 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}>
           <div className="space-y-1">
-            {projectFeatures.map((feature) => (
+            {filteredFeatures.map((feature) => (
               <motion.button
                 key={feature.id}
                 onClick={() => {
                   setSelectedFeature(feature);
                 }}
-                className={`w-full text-left p-3 transition-all duration-200 border-l-2 ${
+                className={`w-full text-left p-3 transition-all duration-100 border-l-2 ${
                   selectedFeature?.id === feature.id
                     ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
                     : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
                 }`}
-                whileHover={{ x: 2 }}
-                whileTap={{ scale: 0.99 }}
+                whileHover={{ x: 8 }}
+                transition={{ duration: 0.08, ease: "easeOut" }}
               >
                 <div className="flex items-center space-x-3">
                   <FileText size={14} className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
@@ -587,13 +907,33 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
             ))}
           </div>
 
-          {projectFeatures.length === 0 && (
+          {filteredFeatures.length === 0 && (
             <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
               <FileText className={`w-8 h-8 mx-auto mb-3 ${isDark ? 'text-gray-600' : 'text-gray-400'}`} />
-              <p className="text-sm font-medium mb-1">No features yet</p>
-              <p className="text-xs">Create your first feature to get started</p>
+              {searchQuery ? (
+                <>
+                  <p className="text-sm font-medium mb-1">No features found</p>
+                  <p className="text-xs">Try a different search term</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium mb-1">No features yet</p>
+                  <p className="text-xs">Create your first feature to get started</p>
+                </>
+              )}
             </div>
           )}
+        </div>
+        
+        {/* Feature Counter */}
+        <div className={`px-3 py-2 border-t text-center`} style={{ 
+          borderColor: isDark ? '#2a2a2a' : '#e2e8f0',
+          backgroundColor: isDark ? '#0f0f0f' : '#f8fafc'
+        }}>
+          <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+            {filteredFeatures.length} {filteredFeatures.length === 1 ? 'feature' : 'features'}
+            {searchQuery && ` (filtered from ${projectFeatures.length})`}
+          </span>
         </div>
       </div>
 
@@ -662,29 +1002,17 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
                 </div>
                 <div className="flex items-center space-x-2">
                   {activeSubTab === 'info' && (
-                    <>
-                      <button
-                        onClick={handleSaveFeature}
-                        className={`px-4 py-2 text-sm font-medium transition-all duration-200 border ${
-                          isDark 
-                            ? 'bg-green-900 hover:bg-green-800 text-green-200 border-green-800' 
-                            : 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200'
-                        }`}
-                      >
-                        Save Changes
-                      </button>
-                      <button
-                        onClick={handleDeleteFeature}
-                        className={`px-4 py-2.5 text-sm font-medium transition-all duration-200 border ${
-                          isDark 
-                            ? 'bg-red-900 hover:bg-red-800 text-red-200 border-red-800' 
-                            : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
-                        }`}
-                        title="Delete Feature"
-                      >
-                        <FiTrash className="w-4 h-4" />
-                      </button>
-                    </>
+                    <button
+                      onClick={handleDeleteFeature}
+                      className={`px-4 py-2.5 text-sm font-medium transition-all duration-200 border ${
+                        isDark 
+                          ? 'bg-red-900 hover:bg-red-800 text-red-200 border-red-800' 
+                          : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                      }`}
+                      title="Delete Feature"
+                    >
+                      <FiTrash className="w-4 h-4" />
+                    </button>
                   )}
                 </div>
               </div>

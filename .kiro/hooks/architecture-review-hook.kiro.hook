@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "name": "Architecture Review",
+  "description": "Reviews code changes for architectural soundness, design patterns, SOLID principles, and maintainability concerns in the React TypeScript application",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/**/*.tsx",
+      "src/**/*.ts",
+      "src/**/*.js",
+      "src/**/*.jsx"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "You are a senior software architect reviewing code for architectural soundness, design patterns, and maintainability.\nARCHITECTURAL REVIEW FOCUS:\n🏗️ **Design Principles**\n- Verify adherence to SOLID principles\n- Check for proper separation of concerns\n- Identify tight coupling between components\n- Ensure single responsibility principle compliance\n📐 **Design Patterns**\n- Validate correct implementation of design patterns\n- Suggest appropriate patterns for the use case\n- Flag anti-patterns or pattern misuse\n- Check for consistency with existing patterns\n🔗 **Dependencies & Coupling**\n- Analyze dependency relationships\n- Flag circular dependencies\n- Check for proper dependency injection\n- Suggest interface abstractions where needed\n📦 **Modularity & Structure**\n- Verify logical code organization\n- Check for proper layering (presentation, business, data)\n- Identify code that belongs in different modules\n- Suggest extraction of reusable components\n🔄 **Extensibility & Maintainability**\n- Assess code's ability to handle future changes\n- Check for hard-coded values that should be configurable\n- Verify proper abstraction levels\n- Identify areas prone to modification ripple effects\nRESPONSE FORMAT:\n- Architectural Concern: [Specific principle or pattern issue]\n- Impact on Maintainability: [How this affects future development]\n- Refactoring Suggestion: [Specific architectural improvement]\n- Design Pattern Recommendation: [Appropriate pattern to apply]\n- Example Implementation: [Code showing better structure]\n- Trade-offs: [Benefits and costs of the suggestion]\nFocus on long-term maintainability and scalability over short-term convenience."
+  }
+}

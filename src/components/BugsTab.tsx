@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Bug, AlertCircle, CheckCircle, Clock, User, Tag, FileText, Brain, MessageSquare, Upload, History, Info, Shield, Settings, CheckSquare, Edit, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Bug, AlertCircle, CheckCircle, Clock, Tag, Brain, MessageSquare, History, Info, Settings, CheckSquare, Edit, ChevronDown, ChevronRight, Search, Filter } from 'lucide-react';
 import { FiPlus, FiTrash } from 'react-icons/fi';
 import { FaFire } from 'react-icons/fa';
 import { Project, Bug as BugType, Task } from '../types';
@@ -8,6 +8,23 @@ import { useSupabaseProjects } from '../hooks/useSupabaseProjects';
 import { useTheme } from '../contexts/ThemeContext';
 import { EnhancedEditor } from './ui/EnhancedEditor';
 import { DeleteConfirmationModal } from './ui/DeleteConfirmationModal';
+
+// Custom sorting icons
+const SortAscIcon = ({ size = 14, className = "" }) => (
+  <svg width={size} height={size} viewBox="0 0 14 14" className={className}>
+    <rect x="2" y="10" width="10" height="1.5" rx="0.75" />
+    <rect x="2" y="6" width="7" height="1.5" rx="0.75" />
+    <rect x="2" y="2" width="4" height="1.5" rx="0.75" />
+  </svg>
+);
+
+const SortDescIcon = ({ size = 14, className = "" }) => (
+  <svg width={size} height={size} viewBox="0 0 14 14" className={className}>
+    <rect x="2" y="2" width="10" height="1.5" rx="0.75" />
+    <rect x="2" y="6" width="7" height="1.5" rx="0.75" />
+    <rect x="2" y="10" width="4" height="1.5" rx="0.75" />
+  </svg>
+);
 
 interface BugsTabProps {
   project: Project;
@@ -72,6 +89,10 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
   const [showSeverityPopup, setShowSeverityPopup] = useState(false);
   const [showStatusPopup, setShowStatusPopup] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showFilterPopup, setShowFilterPopup] = useState(false);
+  const [sortBy, setSortBy] = useState<'name' | 'created' | 'updated' | 'severity'>('created');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isOpenExpanded, setIsOpenExpanded] = useState(() => {
     const saved = localStorage.getItem(`openBugsExpanded_${project.id}`);
     return saved ? JSON.parse(saved) : true; // Default open
@@ -90,13 +111,52 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
   });
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Check if filter is active (not default)
+  const isFilterActive = sortBy !== 'created' || sortOrder !== 'desc';
+
+  // Reset filter to default
+  const resetFilter = () => {
+    setSortBy('created');
+    setSortOrder('desc');
+  };
+
   const projectBugs = bugs.filter(b => b.projectId === project.id);
   
-  // Split bugs by status
-  const openBugs = projectBugs.filter(bug => bug.status === 'open');
-  const inProgressBugs = projectBugs.filter(bug => bug.status === 'in-progress');
-  const completedBugs = projectBugs.filter(bug => bug.status === 'fixed');
-  const othersBugs = projectBugs.filter(bug => bug.status === 'wont-fix');
+  // Filter and sort bugs based on search query and sort options
+  const filteredBugs = projectBugs
+    .filter(bug => 
+      searchQuery === '' || 
+      bug.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      bug.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      bug.content?.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'name':
+          comparison = a.title.localeCompare(b.title);
+          break;
+        case 'created':
+          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+        case 'updated':
+          comparison = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+          break;
+        case 'severity':
+          const severityOrder = { 'low': 1, 'medium': 2, 'high': 3, 'critical': 4 };
+          comparison = severityOrder[a.severity] - severityOrder[b.severity];
+          break;
+      }
+      
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+  
+  // Split filtered bugs by status
+  const openBugs = filteredBugs.filter(bug => bug.status === 'open');
+  const inProgressBugs = filteredBugs.filter(bug => bug.status === 'in-progress');
+  const completedBugs = filteredBugs.filter(bug => bug.status === 'fixed');
+  const othersBugs = filteredBugs.filter(bug => bug.status === 'wont-fix');
 
   // Save section expanded states
   useEffect(() => {
@@ -274,6 +334,7 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
               onLanguageChange={handleLanguageChange}
               placeholder="Describe the bug details, steps to reproduce, expected vs actual behavior, environment info..."
               fileName={selectedBug.title}
+              onBlur={handleSaveBug}
             />
           </div>
         </div>
@@ -446,7 +507,118 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-4">
+        <div className={`p-3`}>
+          <div className="flex items-center space-x-2">
+            <div className="relative flex-1">
+              <Search 
+                size={16} 
+                className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
+                  isDark ? 'text-gray-400' : 'text-gray-500'
+                }`} 
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search bugs..."
+                className={`w-full pl-10 pr-4 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200`}
+                style={{ 
+                  borderColor: isDark ? '#2a2a2a' : '#e2e8f0',
+                  backgroundColor: isDark ? '#111111' : '#ffffff',
+                  color: isDark ? '#ffffff' : '#000000'
+                }}
+              />
+            </div>
+            
+            <div className="relative">
+              <button
+                onClick={() => setShowFilterPopup(!showFilterPopup)}
+                className={`relative p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Filter size={16} />
+                {isFilterActive && (
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-gray-800"></div>
+                )}
+              </button>
+              
+              {showFilterPopup && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowFilterPopup(false);
+                    }}
+                  />
+                  <div 
+                    className="absolute top-full right-0 mt-1 w-48 rounded-lg shadow-xl z-[9999]"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ 
+                      backgroundColor: isDark ? '#1f2937' : '#ffffff',
+                      border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`
+                    }}
+                  >
+                    <div className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Sort by</div>
+                        {isFilterActive && (
+                          <button
+                            onClick={() => {
+                              resetFilter();
+                              setShowFilterPopup(false);
+                            }}
+                            className={`text-xs px-2 py-1 rounded transition-colors ${
+                              isDark ? 'text-red-400 hover:bg-red-900/20' : 'text-red-600 hover:bg-red-50'
+                            }`}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        {[
+                          { key: 'name' as const, label: 'Name' },
+                          { key: 'severity' as const, label: 'Severity' },
+                          { key: 'created' as const, label: 'Date Created' },
+                          { key: 'updated' as const, label: 'Date Updated' }
+                        ].map((option) => (
+                          <button
+                            key={option.key}
+                            onClick={() => {
+                              if (sortBy === option.key) {
+                                setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                              } else {
+                                setSortBy(option.key);
+                                setSortOrder('desc');
+                              }
+                              setShowFilterPopup(false);
+                            }}
+                            className={`w-full flex items-center justify-between p-2 text-sm rounded transition-colors ${
+                              sortBy === option.key 
+                                ? (isDark ? 'bg-gray-700' : 'bg-gray-100') 
+                                : (isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-100')
+                            }`}
+                          >
+                            <span className={isDark ? 'text-gray-200' : 'text-gray-800'}>{option.label}</span>
+                            {sortBy === option.key && (
+                              sortOrder === 'desc' 
+                                ? <SortDescIcon size={14} className={isDark ? 'fill-gray-200' : 'fill-gray-800'} />
+                                : <SortAscIcon size={14} className={isDark ? 'fill-gray-200' : 'fill-gray-800'} />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className={`flex-1 overflow-y-auto px-3 pb-3 space-y-4 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}>
           {/* Open Bugs Section */}
           <BugSection
             title="Open"
@@ -504,13 +676,33 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
           />
 
           {/* Empty State */}
-          {projectBugs.length === 0 && (
+          {filteredBugs.length === 0 && (
             <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
               <Bug className={`w-8 h-8 mx-auto mb-3 ${isDark ? 'text-gray-600' : 'text-gray-400'}`} />
-              <p className="text-sm font-medium mb-1">No bugs yet</p>
-              <p className="text-xs">Report your first bug to get started</p>
+              {searchQuery ? (
+                <>
+                  <p className="text-sm font-medium mb-1">No bugs found</p>
+                  <p className="text-xs">Try a different search term</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium mb-1">No bugs yet</p>
+                  <p className="text-xs">Report your first bug to get started</p>
+                </>
+              )}
             </div>
           )}
+        </div>
+        
+        {/* Bug Counter */}
+        <div className={`px-3 py-2 border-t text-center`} style={{ 
+          borderColor: isDark ? '#2a2a2a' : '#e2e8f0',
+          backgroundColor: isDark ? '#0f0f0f' : '#f8fafc'
+        }}>
+          <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+            {filteredBugs.length} {filteredBugs.length === 1 ? 'bug' : 'bugs'}
+            {searchQuery && ` (filtered from ${projectBugs.length})`}
+          </span>
         </div>
       </div>
 
@@ -584,7 +776,7 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
                             className="fixed inset-0 z-10" 
                             onClick={() => setShowSeverityPopup(false)}
                           />
-                          <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20">
+                          <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
                             <div className="p-2">
                               <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 px-2">Change Severity</div>
                               {severityOptions.map((option) => (
@@ -631,7 +823,7 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
                             className="fixed inset-0 z-10" 
                             onClick={() => setShowStatusPopup(false)}
                           />
-                          <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20">
+                          <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
                             <div className="p-2">
                               <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 px-2">Change Status</div>
                               {statusOptions.map((option) => (
@@ -904,45 +1096,33 @@ const BugSection: React.FC<BugSectionProps> = ({
               <motion.button
                 key={bug.id}
                 onClick={() => onBugSelect(bug)}
-                className={`w-full text-left p-3 transition-all duration-200 border-l-2 hover:opacity-100 ${
+                className={`w-full text-left p-3 transition-all duration-100 border-l-2 hover:opacity-100 ${
                   selectedBug?.id === bug.id
                     ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
                     : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
                 }`}
                 style={{ opacity: defaultOpacity }}
-                whileHover={{ x: 2 }}
-                whileTap={{ scale: 0.99 }}
+                whileHover={{ x: 8 }}
+                transition={{ duration: 0.08, ease: "easeOut" }}
               >
-                <div className="flex items-center space-x-3">
-                  <StatusIcon size={14} className={`${
+                <div className="flex items-start space-x-3 w-full">
+                  <StatusIcon size={16} className={`flex-shrink-0 mt-0.5 ${
                     bug.status === 'open' ? 'text-red-500' :
                     bug.status === 'in-progress' ? 'text-blue-500' :
                     bug.status === 'fixed' ? 'text-green-500' :
                     'text-gray-500'
                   }`} />
                   <div className="min-w-0 flex-1">
-                    <div className={`text-sm font-medium ${
-                      defaultOpacity === 1 
-                        ? (isDark ? 'text-gray-200' : 'text-gray-800')
-                        : (isDark ? 'text-gray-300' : 'text-gray-700')
-                    } truncate`}>
-                      {bug.title}
-                    </div>
-                    <div className="flex items-center space-x-2 mt-0.5">
-                      <span className={`text-xs px-2 py-0.5 rounded ${severityColors[bug.severity]}`}>
-                        {bug.severity}
-                      </span>
-                      <span className={`text-xs px-2 py-0.5 rounded ${
-                        bug.status === 'open' ? 'bg-red-100 text-red-800' :
-                        bug.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
-                        bug.status === 'fixed' ? 'bg-green-100 text-green-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {bug.status.replace('-', ' ')}
-                      </span>
-                      <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
-                      <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                        {new Date(bug.createdAt).toLocaleDateString()}
+                    <div className="flex items-center justify-between">
+                      <div className={`text-sm font-medium leading-tight ${
+                        defaultOpacity === 1 
+                          ? (isDark ? 'text-gray-200' : 'text-gray-800')
+                          : (isDark ? 'text-gray-300' : 'text-gray-700')
+                      } truncate flex-1 min-w-0 pr-2`}>
+                        {bug.title}
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded-md font-medium flex-shrink-0 ${severityColors[bug.severity]}`}>
+                        {bug.severity.charAt(0).toUpperCase() + bug.severity.slice(1)}
                       </span>
                     </div>
                   </div>

@@ -660,14 +660,18 @@ export const useSupabaseProjects = () => {
       console.error('Error creating feature file:', error);
     }
 
-    // Update local state
-    const updatedData = [...featureData, newData];
-    setFeatureData(updatedData);
-    saveToLocalStorage('featureData', updatedData);
+    // Update local state using functional setState to avoid race conditions
+    setFeatureData(prevData => {
+      const updatedData = [...prevData, newData];
+      saveToLocalStorage('featureData', updatedData);
+      return updatedData;
+    });
     
-    const updatedFiles = [...featureFiles, newFile];
-    setFeatureFiles(updatedFiles);
-    saveToLocalStorage('featureFiles', updatedFiles);
+    setFeatureFiles(prevFiles => {
+      const updatedFiles = [...prevFiles, newFile];
+      saveToLocalStorage('featureFiles', updatedFiles);
+      return updatedFiles;
+    });
     
     return newFile;
   };
@@ -856,7 +860,7 @@ export const useSupabaseProjects = () => {
     };
 
     try {
-      // Try to save to Supabase
+      // Try to save to Supabase (only using existing columns)
       const { error } = await supabase
         .from('bugs')
         .insert([{
@@ -864,8 +868,6 @@ export const useSupabaseProjects = () => {
           project_id: projectId,
           title: newBug.title,
           description: newBug.description,
-          content: newBug.content,
-          type: newBug.type,
           status: newBug.status,
           severity: newBug.severity,
           attachments: newBug.attachments

@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "name": "Test Coverage Analysis",
+  "description": "Analyzes code changes to identify missing test coverage, suggest appropriate test types, and provide concrete test implementations for React TypeScript components, hooks, and utilities.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/**/*.tsx",
+      "src/**/*.ts",
+      "src/**/*.test.tsx",
+      "src/**/*.test.ts",
+      "src/**/*.spec.tsx",
+      "src/**/*.spec.ts"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "You are a test engineering specialist ensuring comprehensive test coverage and quality validation.\nTEST ANALYSIS FRAMEWORK:\n🧪 **Test Coverage Assessment**\n- Identify untested code paths and edge cases\n- Check for missing unit tests on new functionality\n- Verify integration test coverage for API changes\n- Flag complex logic without corresponding tests\n✅ **Test Quality Review**\n- Assess test clarity and maintainability\n- Check for proper test isolation and independence\n- Verify meaningful assertions (not just \"does not throw\")\n- Identify brittle tests that might break easily\n🎯 **Edge Case Coverage**\n- Identify boundary conditions that need testing\n- Check error handling and exception scenarios\n- Verify null/undefined input handling\n- Flag race conditions or timing-dependent behavior\n🔍 **Test Strategy**\n- Suggest appropriate test types (unit/integration/e2e)\n- Recommend test data strategies\n- Check for proper mocking and stubbing\n- Verify test environment isolation\n⚠️ **Error Scenarios**\n- Ensure all error paths are tested\n- Check for proper exception handling tests\n- Verify graceful degradation scenarios\n- Test timeout and retry mechanisms\nRESPONSE FORMAT:\n- Missing Test Coverage: [Specific functions/scenarios]\n- Test Type Needed: [Unit/Integration/E2E]\n- Edge Cases to Test: [Specific boundary conditions]\n- Test Implementation: [Concrete test examples]\n- Risk Assessment: [What could break without these tests]\n- Priority: [Critical/High/Medium for each test]\nProvide concrete, runnable test examples that can be immediately implemented."
+  }
+}

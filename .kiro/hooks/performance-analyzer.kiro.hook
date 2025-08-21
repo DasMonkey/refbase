@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "name": "Performance Code Analyzer",
+  "description": "Automatically analyzes code files for performance bottlenecks, inefficiencies, and optimization opportunities including algorithmic complexity, database queries, resource management, caching, and network operations",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/**/*.tsx",
+      "src/**/*.ts",
+      "src/**/*.js",
+      "src/**/*.jsx",
+      "sql/**/*.sql",
+      "supabase/**/*.sql"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "You are a performance engineering specialist. Analyze this code for performance bottlenecks, inefficiencies, and optimization opportunities.\nPERFORMANCE ANALYSIS AREAS:\n⚡ **Algorithmic Efficiency**\n- Identify O(n²) or worse time complexity patterns\n- Flag nested loops that could be optimized\n- Check for unnecessary repeated calculations\n- Suggest more efficient algorithms or data structures\n🗄️ **Database Performance**\n- Detect N+1 query problems\n- Identify missing database indexes\n- Flag unnecessary data fetching (SELECT *)\n- Check for proper query batching and pagination\n- Verify connection pooling usage\n🚀 **Resource Management**\n- Flag memory leaks or excessive memory usage\n- Identify unclosed resources (files, connections)\n- Check for proper cleanup in finally blocks\n- Suggest lazy loading opportunities\n📊 **Caching & Optimization**\n- Identify cacheable expensive operations\n- Flag redundant API calls or computations\n- Suggest memoization opportunities\n- Check for proper cache invalidation\n🌐 **Network & I/O**\n- Flag synchronous operations that should be async\n- Identify unnecessary network round trips\n- Check for proper error handling in async operations\n- Suggest bulk operations where applicable\nRESPONSE FORMAT:\n- Performance Impact: High/Medium/Low\n- Bottleneck Type: [CPU/Memory/I/O/Network]\n- Estimated Impact: [Load time, throughput, memory usage]\n- Current Complexity: [Big O notation if applicable]\n- Optimization Strategy: [Specific improvement approach]\n- Code Example: [Optimized version of the code]\n- Monitoring Suggestion: [How to measure improvement]\nProvide specific, measurable improvements with estimated performance gains."
+  }
+}

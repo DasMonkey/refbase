@@ -13,9 +13,11 @@ import {
   Phone,
   MapPin,
   Camera,
-  Save
+  Save,
+  Key
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { ApiStorageTab } from './ApiStorageTab';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -28,6 +30,7 @@ const settingsTabs = [
   { id: 'privacy', label: 'Privacy & Security', icon: Shield },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'language', label: 'Language & Region', icon: Globe },
+  { id: 'api-storage', label: 'API Storage', icon: Key },
   { id: 'data', label: 'Data & Storage', icon: Download },
 ];
 
@@ -447,6 +450,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
           </div>
         );
+
+      case 'api-storage':
+        return <ApiStorageTab isDark={isDark} />;
 
       case 'data':
         return (

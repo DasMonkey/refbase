@@ -45,8 +45,8 @@ export interface FeatureData {
   tags: string[];
   status: 'active' | 'archived' | 'deleted' | 'draft';
   priority: 'low' | 'medium' | 'high' | 'critical';
-  metadata: Record<string, any>;
-  settings: Record<string, any>;
+  metadata: Record<string, unknown>;
+  settings: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
   accessedAt: Date;
@@ -120,3 +120,22 @@ export interface ChatMessage {
 }
 
 export type TabType = 'dashboard' | 'docs' | 'tasks' | 'features' | 'bugs' | 'calendar' | 'files' | 'chat';
+
+// AI API Key Management Types
+export interface ApiKeyState {
+  mode: 'default' | 'custom';
+  provider?: 'openai' | 'openrouter' | 'custom';
+  customKey?: string;
+  selectedModel?: string;
+}
+
+export interface ApiConfig {
+  provider: 'default' | 'openai' | 'openrouter' | 'custom';
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+  useDefault: boolean;
+}
+
+export type ApiMode = 'default' | 'custom';
+export type ApiProvider = 'openai' | 'openrouter' | 'custom';

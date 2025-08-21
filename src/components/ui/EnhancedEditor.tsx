@@ -12,6 +12,7 @@ interface EnhancedEditorProps {
   language?: string;
   onLanguageChange?: (language: string) => void;
   fileName?: string; // Add fileName for auto-detection
+  onBlur?: () => void; // Add onBlur callback for auto-save
 }
 
 const supportedLanguages = [
@@ -113,7 +114,8 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
   placeholder = "Start writing...",
   language = 'markdown',
   onLanguageChange,
-  fileName
+  fileName,
+  onBlur
 }) => {
   const { isDark } = useTheme();
   const [viewMode, setViewMode] = useState<ViewMode>('edit');
@@ -315,10 +317,6 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
 
         // Extract the actual code content
         const codeContent = extractTextContent(children);
-        
-        // Debug log to see what we're getting
-        console.log('Code block - Language:', codeLanguage, 'Content:', codeContent.substring(0, 50));
-        console.log('Theme being used:', isDark ? 'oneDark' : 'oneLight');
         
         return (
           <div className="my-4 relative">
@@ -582,6 +580,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
                 value={content}
                 onChange={(e) => onChange(e.target.value)}
                 onScroll={handleEditorScroll}
+                onBlur={onBlur}
                 placeholder={placeholder}
                 className={`w-full h-full resize-none focus:outline-none text-sm font-mono leading-relaxed overflow-auto ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}
                 style={{
@@ -671,6 +670,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
               value={content}
               onChange={(e) => onChange(e.target.value)}
               onScroll={handleEditorScroll}
+              onBlur={onBlur}
               placeholder={placeholder}
               className={`flex-1 h-full resize-none focus:outline-none text-sm font-mono leading-relaxed min-w-0 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}
               style={{
