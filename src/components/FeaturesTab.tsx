@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, FileText, Edit3, Brain, MessageSquare, Upload, History, Info, CheckSquare, Edit, Search, Filter } from 'lucide-react';
+import { Plus, FileText, Edit3, Brain, MessageSquare, Upload, History, Info, CheckSquare, Edit, Search, Filter, ChevronDown, ChevronRight } from 'lucide-react';
 import { FiPlus, FiTrash } from 'react-icons/fi';
 import { FaFire } from 'react-icons/fa';
 import { Project, Feature, FeatureFile, Task } from '../types';
@@ -8,6 +8,7 @@ import { useSupabaseProjects } from '../hooks/useSupabaseProjects';
 import { useTheme } from '../contexts/ThemeContext';
 import { EnhancedEditor } from './ui/EnhancedEditor';
 import { DeleteConfirmationModal } from './ui/DeleteConfirmationModal';
+import { KanbanBoard } from './KanbanBoard';
 
 // Custom sorting icons
 const SortAscIcon = ({ size = 14, className = "" }) => (
@@ -39,6 +40,27 @@ const featureTypes = [
   { id: 'custom', label: 'Custom Feature', description: 'Create a custom feature' },
 ];
 
+const statusOptions = [
+  { id: 'planned' as const, label: 'Planned', description: 'Feature is planned for development' },
+  { id: 'in-progress' as const, label: 'In Progress', description: 'Feature is currently being developed' },
+  { id: 'testing' as const, label: 'Testing', description: 'Feature is being tested' },
+  { id: 'implemented' as const, label: 'Implemented', description: 'Feature has been implemented' },
+];
+
+const statusColors = {
+  planned: 'bg-purple-100 text-purple-800 border-purple-200',
+  'in-progress': 'bg-blue-100 text-blue-800 border-blue-200',
+  implemented: 'bg-green-100 text-green-800 border-green-200',
+  testing: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+};
+
+const statusColorsDark = {
+  planned: 'bg-purple-900/50 text-purple-200 border-purple-700',
+  'in-progress': 'bg-blue-900/50 text-blue-200 border-blue-700',
+  implemented: 'bg-green-900/50 text-green-200 border-green-700',
+  testing: 'bg-yellow-900/50 text-yellow-200 border-yellow-700',
+};
+
 const featureFileTypes = [
   { id: 'requirement' as const, label: 'Requirements', description: 'Feature requirements and specifications', icon: FileText, defaultName: 'requirements.md' },
   { id: 'structure' as const, label: 'Structure', description: 'Architecture and data structures', icon: Edit3, defaultName: 'structure.md' },
@@ -51,7 +73,7 @@ const featureFileTypes = [
 ];
 
 export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
-  const { features, featureFiles, createFeature, updateFeature, deleteFeature, createFeatureFile, updateFeatureFile } = useSupabaseProjects();
+  const { features, featureFiles, createFeature, updateFeature, deleteFeature, createFeatureFile, updateFeatureFile, deleteFeatureFile, tasks, createTask, updateTask, deleteTask } = useSupabaseProjects();
   const { isDark } = useTheme();
   const [selectedFeature, setSelectedFeature] = useState<Feature | null>(() => {
     const savedFeatureId = localStorage.getItem(`selectedFeature_${project.id}`);
@@ -70,6 +92,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
   });
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editingTitle, setEditingTitle] = useState('');
+  const [showStatusPopup, setShowStatusPopup] = useState(false);
   const [selectedFeatureFile, setSelectedFeatureFile] = useState<FeatureFile | null>(null);
   const [showCreateFileModal, setShowCreateFileModal] = useState(false);
   const [newFileName, setNewFileName] = useState('');
@@ -83,7 +106,24 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
   const [showFileFilterPopup, setShowFileFilterPopup] = useState(false);
   const [fileSortBy, setFileSortBy] = useState<'name' | 'created' | 'updated'>('created');
   const [fileSortOrder, setFileSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [isPlannedExpanded, setIsPlannedExpanded] = useState(() => {
+    const saved = localStorage.getItem(`plannedFeaturesExpanded_${project.id}`);
+    return saved ? JSON.parse(saved) : true; // Default open
+  });
+  const [isInProgressExpanded, setIsInProgressExpanded] = useState(() => {
+    const saved = localStorage.getItem(`inProgressFeaturesExpanded_${project.id}`);
+    return saved ? JSON.parse(saved) : true; // Default open
+  });
+  const [isImplementedExpanded, setIsImplementedExpanded] = useState(() => {
+    const saved = localStorage.getItem(`implementedFeaturesExpanded_${project.id}`);
+    return saved ? JSON.parse(saved) : false; // Default collapsed
+  });
+  const [isTestingExpanded, setIsTestingExpanded] = useState(() => {
+    const saved = localStorage.getItem(`testingFeaturesExpanded_${project.id}`);
+    return saved ? JSON.parse(saved) : true; // Default open
+  });
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [localTasks, setLocalTasks] = useState<Task[]>([]);
   
   // Chat History specific states
   const [selectedChatFile, setSelectedChatFile] = useState<FeatureFile | null>(null);
@@ -146,6 +186,12 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
       return sortOrder === 'asc' ? comparison : -comparison;
     });
 
+  // Split filtered features by status
+  const plannedFeatures = filteredFeatures.filter(feature => feature.status === 'planned');
+  const inProgressFeatures = filteredFeatures.filter(feature => feature.status === 'in-progress');
+  const implementedFeatures = filteredFeatures.filter(feature => feature.status === 'implemented');
+  const testingFeatures = filteredFeatures.filter(feature => feature.status === 'testing');
+
   // Filter and sort feature files based on search query and sort options
   const currentFeatureFiles = selectedFeature ? featureFiles.filter(f => f.featureId === selectedFeature.id) : [];
   const filteredFeatureFiles = currentFeatureFiles
@@ -198,6 +244,18 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
       return chatFileSortOrder === 'asc' ? comparison : -comparison;
     });
 
+  // Tasks for selected feature
+  const featureTasks = React.useMemo(() => 
+    selectedFeature ? tasks.filter(t => t.projectId === project.id && t.featureId === selectedFeature.id) : [], 
+    [tasks, project.id, selectedFeature?.id]
+  );
+
+  // Sync localTasks with featureTasks
+  useEffect(() => {
+    setLocalTasks(featureTasks);
+  }, [featureTasks]);
+
+
   // Restore selected feature when features are loaded
   useEffect(() => {
     const savedFeatureId = localStorage.getItem(`selectedFeature_${project.id}`);
@@ -223,6 +281,14 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
     localStorage.setItem(`featureSubTab_${project.id}`, activeSubTab);
   }, [activeSubTab, project.id]);
 
+  // Save section expanded states
+  useEffect(() => {
+    localStorage.setItem(`plannedFeaturesExpanded_${project.id}`, JSON.stringify(isPlannedExpanded));
+    localStorage.setItem(`inProgressFeaturesExpanded_${project.id}`, JSON.stringify(isInProgressExpanded));
+    localStorage.setItem(`implementedFeaturesExpanded_${project.id}`, JSON.stringify(isImplementedExpanded));
+    localStorage.setItem(`testingFeaturesExpanded_${project.id}`, JSON.stringify(isTestingExpanded));
+  }, [isPlannedExpanded, isInProgressExpanded, isImplementedExpanded, isTestingExpanded, project.id]);
+
   // Reset scroll position and selected files when switching features
   useEffect(() => {
     if (scrollContainerRef.current) {
@@ -232,6 +298,49 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
     setSelectedChatFile(null);
     // Don't reset to 'info' - keep the user's preferred sub-tab
   }, [selectedFeature?.id]);
+
+  const handleTasksChange = async (newTasks: Task[]) => {
+    setLocalTasks(newTasks);
+    
+    for (const task of newTasks) {
+      const originalTask = featureTasks.find(t => t.id === task.id);
+      
+      if (originalTask && originalTask.status !== task.status) {
+        await updateTask(task.id, { status: task.status });
+      } else if (!originalTask && task.id.startsWith('temp-')) {
+        try {
+          const createdTask = await createTask(project.id, task.title, task.description, task.priority, task.status, selectedFeature?.id);
+          setLocalTasks(prevTasks => 
+            prevTasks.map(t => t.id === task.id ? { ...t, id: createdTask.id, projectId: project.id, featureId: selectedFeature?.id } : t)
+          );
+        } catch (error) {
+          console.error('Failed to create task:', error);
+        }
+      }
+    }
+
+    const permanentTasks = newTasks.filter(t => !t.id.startsWith('temp-'));
+    featureTasks.forEach(originalTask => {
+      if (!permanentTasks.find(t => t.id === originalTask.id)) {
+        deleteTask(originalTask.id);
+      }
+    });
+  };
+
+  const handleUpdateTask = async (taskId: string, newTitle: string) => {
+    const updatedTasks = localTasks.map(task => 
+      task.id === taskId ? { ...task, title: newTitle } : task
+    );
+    setLocalTasks(updatedTasks);
+    
+    if (!taskId.startsWith('temp-')) {
+      try {
+        await updateTask(taskId, { title: newTitle });
+      } catch (error) {
+        console.error('Failed to update task:', error);
+      }
+    }
+  };
 
   const handleCreateFeature = async () => {
     if (newFeatureTitle.trim()) {
@@ -273,6 +382,21 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
     if (selectedFeature) {
       deleteFeature(selectedFeature.id);
       setSelectedFeature(null);
+      setShowDeleteConfirmation(false);
+    }
+  };
+
+  const handleDeleteFeatureFile = () => {
+    if (selectedFeatureFile) {
+      setShowDeleteConfirmation(true);
+    }
+  };
+
+  const confirmDeleteFeatureFile = () => {
+    if (selectedFeatureFile) {
+      deleteFeatureFile(selectedFeatureFile.id);
+      setSelectedFeatureFile(null);
+      setShowDeleteConfirmation(false);
     }
   };
 
@@ -303,6 +427,14 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
     } else if (e.key === 'Escape') {
       handleCancelTitleEdit();
     }
+  };
+
+  const handleStatusChange = async (newStatus: Feature['status']) => {
+    if (selectedFeature && newStatus !== selectedFeature.status) {
+      await updateFeature(selectedFeature.id, { status: newStatus });
+      setSelectedFeature({ ...selectedFeature, status: newStatus });
+    }
+    setShowStatusPopup(false);
   };
 
   const handleCreateFeatureFile = async () => {
@@ -551,33 +683,51 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
                 const Icon = fileTypeInfo?.icon || FileText;
                 
                 return (
-                  <motion.button
-                    key={file.id}
-                    onClick={() => setSelectedFeatureFile(file)}
-                    className={`w-full text-left p-3 transition-all duration-100 border-l-2 ${
-                      selectedFeatureFile?.id === file.id
-                        ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
-                        : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
-                    }`}
-                    whileHover={{ x: 8 }}
-                    transition={{ duration: 0.08, ease: "easeOut" }}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <Icon size={14} className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
-                      <div className="min-w-0 flex-1">
-                        <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'} truncate`}>{file.name}</div>
-                        <div className="flex items-center space-x-2 mt-0.5">
-                          <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} capitalize`}>
-                            {fileTypeInfo?.label || file.type}
-                          </span>
-                          <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
-                          <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                            {new Date(file.updatedAt).toLocaleDateString()}
-                          </span>
+                  <div key={file.id} className="relative group">
+                    <motion.button
+                      onClick={() => setSelectedFeatureFile(file)}
+                      className={`w-full text-left p-3 pr-10 transition-all duration-100 border-l-2 ${
+                        selectedFeatureFile?.id === file.id
+                          ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
+                          : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
+                      }`}
+                      whileHover={{ x: 8 }}
+                      transition={{ duration: 0.08, ease: "easeOut" }}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <Icon size={14} className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
+                        <div className="min-w-0 flex-1">
+                          <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'} truncate`}>{file.name}</div>
+                          <div className="flex items-center space-x-2 mt-0.5">
+                            <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} capitalize`}>
+                              {fileTypeInfo?.label || file.type}
+                            </span>
+                            <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
+                            <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                              {new Date(file.updatedAt).toLocaleDateString()}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </motion.button>
+                    </motion.button>
+                    
+                    {/* Inline file delete button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedFeatureFile(file); // Select file first to ensure it's set for deletion
+                        handleDeleteFeatureFile();
+                      }}
+                      className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 rounded transition-all duration-200 opacity-0 group-hover:opacity-100 ${
+                        isDark 
+                          ? 'hover:bg-red-900/50 text-red-400 hover:text-red-300' 
+                          : 'hover:bg-red-100 text-red-500 hover:text-red-600'
+                      }`}
+                      title="Delete File"
+                    >
+                      <FiTrash size={12} />
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -655,13 +805,15 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
 
     return (
       <div className={`flex-1 min-h-0 overflow-hidden`} style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
-        <FeatureKanbanBoard 
-          feature={selectedFeature} 
-          project={project}
+        <KanbanBoard 
+          tasks={localTasks}
+          onTasksChange={handleTasksChange}
+          onUpdateTask={handleUpdateTask}
         />
       </div>
     );
   };
+
 
   const renderAISummarySection = () => {
     if (!selectedFeature) return null;
@@ -1135,6 +1287,102 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
     );
   };
 
+  // Helper function to render status sections with features (auto-hide if empty)
+  const renderStatusSection = (
+    title: string,
+    features: Feature[],
+    isExpanded: boolean,
+    setExpanded: (expanded: boolean) => void,
+    statusColors: { [key: string]: string }
+  ) => {
+    // Auto-hide if no features in this status
+    if (features.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="mb-2">
+        <div
+          className={`flex items-center justify-between py-2 px-3 cursor-pointer transition-colors ${
+            isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
+          }`}
+          onClick={() => setExpanded(!isExpanded)}
+        >
+          <div className="flex items-center space-x-2">
+            {isExpanded ? (
+              <ChevronDown size={14} className={isDark ? 'text-gray-400' : 'text-gray-500'} />
+            ) : (
+              <ChevronRight size={14} className={isDark ? 'text-gray-400' : 'text-gray-500'} />
+            )}
+            <span className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
+              {title}
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded ${statusColors}`}>
+              {features.length}
+            </span>
+          </div>
+        </div>
+        
+        {isExpanded && (
+          <div className="space-y-1">
+            {features.map((feature) => (
+              <div key={feature.id} className="relative group">
+                <motion.button
+                  onClick={() => {
+                    // Clear selected file when switching to a different feature
+                    if (selectedFeature?.id !== feature.id) {
+                      setSelectedFeatureFile(null);
+                    }
+                    setSelectedFeature(feature);
+                  }}
+                  className={`w-full text-left p-3 pr-10 transition-all duration-100 border-l-2 ${
+                    selectedFeature?.id === feature.id
+                      ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
+                      : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
+                  }`}
+                  whileHover={{ x: 8 }}
+                  transition={{ duration: 0.08, ease: "easeOut" }}
+                >
+                  <div className="flex items-center space-x-3">
+                    <FileText size={14} className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'} truncate`}>{feature.title}</div>
+                      <div className="flex items-center space-x-2 mt-0.5">
+                        <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} capitalize`}>
+                          {feature.type ? feature.type.replace('-', ' ') : 'Feature'}
+                        </span>
+                        <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
+                        <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                          {new Date(feature.updatedAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </motion.button>
+                
+                {/* Inline feature delete button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedFeature(feature);
+                    handleDeleteFeature();
+                  }}
+                  className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 rounded transition-all duration-200 opacity-0 group-hover:opacity-100 ${
+                    isDark 
+                      ? 'hover:bg-red-900/50 text-red-400 hover:text-red-300' 
+                      : 'hover:bg-red-100 text-red-500 hover:text-red-600'
+                  }`}
+                  title="Delete feature"
+                >
+                  <FiTrash size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex h-full w-full overflow-hidden">
@@ -1268,42 +1516,42 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
         </div>
 
         <div className={`flex-1 overflow-y-auto px-3 pb-3 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}>
-          <div className="space-y-1">
-            {filteredFeatures.map((feature) => (
-              <motion.button
-                key={feature.id}
-                onClick={() => {
-                  // Clear selected file when switching to a different feature
-                  if (selectedFeature?.id !== feature.id) {
-                    setSelectedFeatureFile(null);
-                  }
-                  setSelectedFeature(feature);
-                }}
-                className={`w-full text-left p-3 transition-all duration-100 border-l-2 ${
-                  selectedFeature?.id === feature.id
-                    ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
-                    : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
-                }`}
-                whileHover={{ x: 8 }}
-                transition={{ duration: 0.08, ease: "easeOut" }}
-              >
-                <div className="flex items-center space-x-3">
-                  <FileText size={14} className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
-                  <div className="min-w-0 flex-1">
-                    <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'} truncate`}>{feature.title}</div>
-                    <div className="flex items-center space-x-2 mt-0.5">
-                      <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} capitalize`}>
-                        {feature.type ? feature.type.replace('-', ' ') : 'Feature'}
-                      </span>
-                      <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
-                      <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                        {new Date(feature.updatedAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </motion.button>
-            ))}
+          <div className="space-y-2">
+            {/* Planned Features */}
+            {renderStatusSection(
+              'Planned',
+              plannedFeatures,
+              isPlannedExpanded,
+              setIsPlannedExpanded,
+              isDark ? statusColorsDark.planned : statusColors.planned
+            )}
+            
+            {/* In Progress Features */}
+            {renderStatusSection(
+              'In Progress',
+              inProgressFeatures,
+              isInProgressExpanded,
+              setIsInProgressExpanded,
+              isDark ? statusColorsDark['in-progress'] : statusColors['in-progress']
+            )}
+            
+            {/* Testing Features */}
+            {renderStatusSection(
+              'Testing',
+              testingFeatures,
+              isTestingExpanded,
+              setIsTestingExpanded,
+              isDark ? statusColorsDark.testing : statusColors.testing
+            )}
+            
+            {/* Implemented Features */}
+            {renderStatusSection(
+              'Implemented',
+              implementedFeatures,
+              isImplementedExpanded,
+              setIsImplementedExpanded,
+              isDark ? statusColorsDark.implemented : statusColors.implemented
+            )}
           </div>
 
           {filteredFeatures.length === 0 && (
@@ -1398,26 +1646,71 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
                     <span className={`px-1.5 py-0.5 text-xs font-medium rounded ${isDark ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600'}`}>
                       {selectedFeature.type ? selectedFeature.type.replace('-', ' ').toUpperCase() : 'FEATURE'}
                     </span>
+                    
+                    {/* Status Tag */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowStatusPopup(!showStatusPopup)}
+                        className={`px-2 py-1 text-xs font-medium border transition-all duration-200 cursor-pointer ${
+                          isDark 
+                            ? statusColorsDark[selectedFeature.status || 'planned']
+                            : statusColors[selectedFeature.status || 'planned']
+                        }`}
+                        title={`Current status: ${statusOptions.find(s => s.id === selectedFeature.status)?.label || 'Planned'}`}
+                        style={{ padding: '4px 8px' }}
+                      >
+                        {statusOptions.find(s => s.id === selectedFeature.status)?.label || 'Planned'}
+                      </button>
+                      
+                      {showStatusPopup && (
+                        <>
+                          <div 
+                            className="fixed inset-0 z-[9998]" 
+                            onClick={() => setShowStatusPopup(false)}
+                          />
+                          <div 
+                            className="absolute top-full right-0 mt-1 w-48 rounded-lg shadow-xl z-[9999]"
+                            style={{ 
+                              backgroundColor: isDark ? '#1f2937' : '#ffffff',
+                              border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`
+                            }}
+                          >
+                            <div className="p-2">
+                              {statusOptions.map((status) => (
+                                <button
+                                  key={status.id}
+                                  onClick={() => handleStatusChange(status.id)}
+                                  className={`w-full text-left p-2 text-sm rounded transition-colors ${
+                                    selectedFeature.status === status.id
+                                      ? (isDark ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-900') 
+                                      : (isDark ? 'hover:bg-gray-700 text-gray-200' : 'hover:bg-gray-100 text-gray-700')
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className={`font-medium ${
+                                        isDark ? statusColorsDark[status.id].split(' ')[1] : statusColors[status.id].split(' ')[1]
+                                      }`}>
+                                        {status.label}
+                                      </div>
+                                      <div className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        {status.description}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    
                     <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
                       Updated {new Date(selectedFeature.updatedAt).toLocaleDateString()}
                     </span>
                   </div>
                 </div>
-                
-                {/* Delete button aligned right */}
-                {activeSubTab === 'info' && (
-                  <button
-                    onClick={handleDeleteFeature}
-                    className={`px-4 py-2.5 text-sm font-medium transition-all duration-200 border ${
-                      isDark 
-                        ? 'bg-red-900 hover:bg-red-800 text-red-200 border-red-800' 
-                        : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
-                    }`}
-                    title="Delete Feature"
-                  >
-                    <FiTrash className="w-4 h-4" />
-                  </button>
-                )}
               </div>
 
               {/* Sub Navigation Row */}
@@ -1715,426 +2008,15 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
       <DeleteConfirmationModal
         isOpen={showDeleteConfirmation}
         onClose={() => setShowDeleteConfirmation(false)}
-        onConfirm={confirmDeleteFeature}
-        title="Delete Feature"
-        message="Are you sure you want to delete this feature? All associated files and data will be permanently removed."
-        itemName={selectedFeature?.title}
+        onConfirm={selectedFeatureFile ? confirmDeleteFeatureFile : confirmDeleteFeature}
+        title={selectedFeatureFile ? "Delete File" : "Delete Feature"}
+        message={selectedFeatureFile 
+          ? "Are you sure you want to delete this file? This action cannot be undone."
+          : "Are you sure you want to delete this feature? All associated files and data will be permanently removed."
+        }
+        itemName={selectedFeatureFile ? selectedFeatureFile.name : selectedFeature?.title}
       />
     </div>
   );
 };
 
-// Feature-specific Kanban Board Component
-interface FeatureKanbanBoardProps {
-  feature: Feature;
-  project: Project;
-}
-
-const FeatureKanbanBoard: React.FC<FeatureKanbanBoardProps> = ({ feature, project }) => {
-  const { tasks, createTask, updateTask, deleteTask } = useSupabaseProjects();
-  const [localTasks, setLocalTasks] = useState<Task[]>([]);
-  
-  // Filter tasks for this specific feature
-  const featureTasks = React.useMemo(() => 
-    tasks.filter(t => t.projectId === project.id && t.featureId === feature.id), 
-    [tasks, project.id, feature.id]
-  );
-
-  // Sync with Supabase when local tasks change
-  React.useEffect(() => {
-    setLocalTasks(featureTasks);
-  }, [featureTasks]);
-
-  const handleTasksChange = (newTasks: Task[]) => {
-    setLocalTasks(newTasks);
-    
-    // Find what changed and sync with Supabase
-    newTasks.forEach(task => {
-      const originalTask = featureTasks.find(t => t.id === task.id);
-      if (originalTask && originalTask.status !== task.status) {
-        updateTask(task.id, { status: task.status });
-      }
-      if (!originalTask && task.projectId === '') {
-        // New task - create with correct status and link to feature
-        createTask(project.id, task.title, task.description, task.priority, task.status, feature.id);
-      }
-    });
-
-    // Check for deleted tasks
-    featureTasks.forEach(originalTask => {
-      if (!newTasks.find(t => t.id === originalTask.id)) {
-        deleteTask(originalTask.id);
-      }
-    });
-  };
-
-  const statusColumns = [
-    { 
-      id: 'todo' as const, 
-      label: 'TODO', 
-      headingColor: 'text-yellow-200'
-    },
-    { 
-      id: 'in-progress' as const, 
-      label: 'In progress', 
-      headingColor: 'text-blue-200'
-    },
-    { 
-      id: 'fix-later' as const, 
-      label: 'Fix Later', 
-      headingColor: 'text-orange-200'
-    },
-    { 
-      id: 'done' as const, 
-      label: 'Complete', 
-      headingColor: 'text-emerald-200'
-    },
-  ];
-
-  return (
-    <div className="h-full w-full flex flex-col text-neutral-50" style={{ backgroundColor: '#0a0a0a' }}>
-      <div className="p-4 border-b border-neutral-700 flex-shrink-0">
-        <h3 className="text-lg font-semibold text-neutral-200 mb-2">
-          Tasks for: {feature.title}
-        </h3>
-        <p className="text-sm text-neutral-400">
-          Manage tasks specific to this feature
-        </p>
-      </div>
-      <div className="flex-1 min-h-0 overflow-hidden p-4">
-        <div 
-          className="flex h-full w-full [&::-webkit-scrollbar]:hidden" 
-          style={{ 
-            scrollbarWidth: 'none', 
-            msOverflowStyle: 'none'
-          }}
-        >
-          {statusColumns.map((column) => (
-            <FeatureColumn
-              key={column.id}
-              title={column.label}
-              headingColor={column.headingColor}
-              tasks={localTasks}
-              column={column.id}
-              setTasks={handleTasksChange}
-              featureId={feature.id}
-              projectId={project.id}
-            />
-          ))}
-          <FeatureBurnBarrel setTasks={handleTasksChange} allTasks={localTasks} />
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Feature-specific Column Component (adapted from TasksTab)
-interface FeatureColumnProps {
-  title: string;
-  headingColor: string;
-  tasks: Task[];
-  column: Task['status'];
-  setTasks: (tasks: Task[]) => void;
-  featureId: string;
-  projectId: string;
-}
-
-const FeatureColumn: React.FC<FeatureColumnProps> = ({
-  title,
-  headingColor,
-  tasks,
-  column,
-  setTasks,
-  featureId,
-  projectId,
-}) => {
-  const [active, setActive] = useState(false);
-
-  const handleDragStart = (e: React.DragEvent, task: Task) => {
-    e.dataTransfer.setData("taskId", task.id);
-  };
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    const taskId = e.dataTransfer.getData("taskId");
-
-    setActive(false);
-    clearHighlights();
-
-    const indicators = getIndicators();
-    const { element } = getNearestIndicator(e, indicators);
-
-    const before = element.dataset.before || "-1";
-
-    if (before !== taskId) {
-      let copy = [...tasks];
-
-      let taskToTransfer = copy.find((c) => c.id === taskId);
-      if (!taskToTransfer) return;
-      taskToTransfer = { ...taskToTransfer, status: column };
-
-      copy = copy.filter((c) => c.id !== taskId);
-
-      const moveToBack = before === "-1";
-
-      if (moveToBack) {
-        copy.push(taskToTransfer);
-      } else {
-        const insertAtIndex = copy.findIndex((el) => el.id === before);
-        if (insertAtIndex === undefined) return;
-
-        copy.splice(insertAtIndex, 0, taskToTransfer);
-      }
-
-      setTasks(copy);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    highlightIndicator(e);
-    setActive(true);
-  };
-
-  const clearHighlights = (els?: HTMLElement[]) => {
-    const indicators = els || getIndicators();
-    indicators.forEach((i) => {
-      i.style.opacity = "0";
-    });
-  };
-
-  const highlightIndicator = (e: React.DragEvent) => {
-    const indicators = getIndicators();
-    clearHighlights(indicators);
-    const el = getNearestIndicator(e, indicators);
-    el.element.style.opacity = "1";
-  };
-
-  const getNearestIndicator = (e: React.DragEvent, indicators: HTMLElement[]) => {
-    const DISTANCE_OFFSET = 50;
-
-    const el = indicators.reduce(
-      (closest, child) => {
-        const box = child.getBoundingClientRect();
-        const offset = e.clientY - (box.top + DISTANCE_OFFSET);
-
-        if (offset < 0 && offset > closest.offset) {
-          return { offset: offset, element: child };
-        } else {
-          return closest;
-        }
-      },
-      {
-        offset: Number.NEGATIVE_INFINITY,
-        element: indicators[indicators.length - 1],
-      }
-    );
-
-    return el;
-  };
-
-  const getIndicators = () => {
-    return Array.from(
-      document.querySelectorAll(
-        `[data-column="${column}"]`
-      ) as unknown as HTMLElement[]
-    );
-  };
-
-  const handleDragLeave = () => {
-    clearHighlights();
-    setActive(false);
-  };
-
-  const filteredTasks = tasks.filter((c) => c.status === column);
-
-  return (
-    <div className="flex-1 min-w-0 h-full flex flex-col mx-2">
-      <div className="mb-3 flex items-center justify-between flex-shrink-0">
-        <h3 className={`font-medium ${headingColor} truncate`}>{title}</h3>
-        <span className="rounded text-sm text-neutral-400 ml-2">
-          {filteredTasks.length}
-        </span>
-      </div>
-      <div
-        onDrop={handleDragEnd}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        className={`flex-1 min-h-0 overflow-y-auto transition-colors ${
-          active ? "bg-neutral-800/50" : "bg-neutral-800/0"
-        }`}
-      >
-        {filteredTasks.map((c) => {
-          return <FeatureTaskCard key={c.id} {...c} handleDragStart={handleDragStart} />;
-        })}
-        <FeatureDropIndicator beforeId={null} column={column} />
-        <FeatureAddCard 
-          column={column} 
-          setTasks={setTasks} 
-          allTasks={tasks}
-          featureId={featureId}
-          projectId={projectId}
-        />
-      </div>
-    </div>
-  );
-};
-
-// Feature-specific Task Card Component
-interface FeatureTaskCardProps extends Task {
-  handleDragStart: (e: React.DragEvent, task: Task) => void;
-}
-
-const FeatureTaskCard: React.FC<FeatureTaskCardProps> = ({ id, title, status, handleDragStart, ...task }) => {
-  return (
-    <>
-      <FeatureDropIndicator beforeId={id} column={status} />
-      <motion.div
-        layout
-        layoutId={id}
-        draggable="true"
-        onDragStart={(e) => handleDragStart(e as any, { id, title, status, ...task })}
-        className="cursor-grab rounded border border-neutral-700 bg-neutral-800 p-3 active:cursor-grabbing"
-      >
-        <p className="text-sm text-neutral-100">{title}</p>
-      </motion.div>
-    </>
-  );
-};
-
-// Feature-specific Drop Indicator Component
-interface FeatureDropIndicatorProps {
-  beforeId: string | null;
-  column: string;
-}
-
-const FeatureDropIndicator: React.FC<FeatureDropIndicatorProps> = ({ beforeId, column }) => {
-  return (
-    <div
-      data-before={beforeId || "-1"}
-      data-column={column}
-      className="my-0.5 h-0.5 w-full bg-violet-400 opacity-0"
-    />
-  );
-};
-
-// Feature-specific Burn Barrel Component
-interface FeatureBurnBarrelProps {
-  setTasks: (tasks: Task[]) => void;
-  allTasks: Task[];
-}
-
-const FeatureBurnBarrel: React.FC<FeatureBurnBarrelProps> = ({
-  setTasks,
-  allTasks,
-}) => {
-  const [active, setActive] = useState(false);
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setActive(true);
-  };
-
-  const handleDragLeave = () => {
-    setActive(false);
-  };
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    const taskId = e.dataTransfer.getData("taskId");
-
-    setTasks(allTasks.filter((c: Task) => c.id !== taskId));
-
-    setActive(false);
-  };
-        
-  return (
-    <div
-      onDrop={handleDragEnd}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      className={`mt-10 grid h-32 w-32 shrink-0 place-content-center rounded border text-2xl ${
-        active
-          ? "border-red-800 bg-red-800/20 text-red-500"
-          : "border-neutral-500 bg-neutral-500/20 text-neutral-500"
-      }`}
-    >
-      {active ? <FaFire className="animate-bounce" /> : <FiTrash />}
-    </div>
-  );
-};
-
-// Feature-specific Add Card Component
-interface FeatureAddCardProps {
-  column: Task['status'];
-  setTasks: (tasks: Task[]) => void;
-  allTasks: Task[];
-  featureId: string;
-  projectId: string;
-}
-
-const FeatureAddCard: React.FC<FeatureAddCardProps> = ({ column, setTasks, allTasks, featureId, projectId }) => {
-  const [text, setText] = useState("");
-  const [adding, setAdding] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    if (!text.trim().length) return;
-
-    const newTask: Task = {
-      id: Math.random().toString(),
-      projectId: projectId,
-      title: text.trim(),
-      description: '',
-      status: column,
-      priority: 'medium',
-      featureId: featureId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    setTasks([...allTasks, newTask]);
-
-    setAdding(false);
-    setText("");
-  };
-
-  return (
-    <>
-      {adding ? (
-        <motion.form layout onSubmit={handleSubmit}>
-          <textarea
-            onChange={(e) => setText(e.target.value)}
-            autoFocus
-            placeholder="Add new task..."
-            className="w-full rounded border border-violet-400 bg-violet-400/20 p-3 text-sm text-neutral-50 placeholder-violet-300 focus:outline-0"
-          />
-          <div className="mt-1.5 flex items-center justify-end gap-1.5">
-            <button
-              type="button"
-              onClick={() => setAdding(false)}
-              className="px-3 py-1.5 text-xs text-neutral-400 transition-colors hover:text-neutral-50"
-            >
-              Close
-            </button>
-            <button
-              type="submit"
-              className="flex items-center gap-1.5 rounded bg-neutral-50 px-3 py-1.5 text-xs text-neutral-950 transition-colors hover:bg-neutral-300"
-            >
-              <span>Add</span>
-              <FiPlus />
-            </button>
-          </div>
-        </motion.form>
-      ) : (
-        <motion.button
-          layout
-          onClick={() => setAdding(true)}
-          className="flex w-full items-center gap-1.5 px-3 py-1.5 text-xs text-neutral-400 transition-colors hover:text-neutral-50"
-        >
-          <span>Add card</span>
-          <FiPlus />
-        </motion.button>
-      )}
-    </>
-  );
-};

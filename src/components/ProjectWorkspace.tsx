@@ -46,8 +46,17 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) =
     const saved = localStorage.getItem(`activeTab_${project.id}`);
     return (saved as TabType) || 'dashboard';
   });
+
+
   const { isDark, toggleTheme } = useTheme();
   const { tasks, features, bugs, documents, files, messages } = useSupabaseProjects();
+
+  // Note: Removed smart refresh system - will implement proper CRDT-based collaboration instead
+
+  // Save activeTab to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem(`activeTab_${project.id}`, activeTab);
+  }, [activeTab, project.id]);
   const [isMac, setIsMac] = useState(false);
   const [aiChatVisible, setAiChatVisible] = useState(true);
   const [mouseY, setMouseY] = useState(0);

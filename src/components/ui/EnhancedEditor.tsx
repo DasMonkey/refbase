@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Markdown from 'markdown-to-jsx';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Code, Eye, Edit3, FileText, Settings, Copy, Check } from 'lucide-react';
+import { Code, Eye, Edit3, FileText, Settings, Copy, Check, Upload, Image as ImageIcon, X, Loader } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useImageUpload, useDragAndDrop } from '../../hooks/useImageUpload';
+import { ImageModal } from './ImageModal';
 
 interface EnhancedEditorProps {
   content: string;
@@ -13,6 +15,11 @@ interface EnhancedEditorProps {
   onLanguageChange?: (language: string) => void;
   fileName?: string; // Add fileName for auto-detection
   onBlur?: () => void; // Add onBlur callback for auto-save
+  // Image upload support
+  enableImageUpload?: boolean;
+  projectId?: string;
+  bugId?: string;
+  onImageInsert?: (markdownText: string) => void; // Callback when image is inserted
 }
 
 const supportedLanguages = [
@@ -115,7 +122,11 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
   language = 'markdown',
   onLanguageChange,
   fileName,
-  onBlur
+  onBlur,
+  enableImageUpload = false,
+  projectId,
+  bugId,
+  onImageInsert
 }) => {
   const { isDark } = useTheme();
   const [viewMode, setViewMode] = useState<ViewMode>('edit');
@@ -125,6 +136,27 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const hasAutoDetected = useRef(false);
+  
+  // Image upload functionality
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageUpload = useImageUpload();
+  
+  // Image modal state
+  const [imageModal, setImageModal] = useState({
+    isOpen: false,
+    imageUrl: '',
+    altText: '',
+    originalName: ''
+  });
+  
+  // Drag and drop functionality
+  const handleFileDrop = (files: File[]) => {
+    if (enableImageUpload && projectId && bugId && files.length > 0) {
+      handleImageUpload(files);
+    }
+  };
+  
+  const { isDragging, setupDragAndDrop } = useDragAndDrop(handleFileDrop);
 
   // Auto-detect language from filename only on first load for each file
   useEffect(() => {
@@ -170,6 +202,94 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
       }
     };
   }, []);
+
+  // Setup drag and drop
+  useEffect(() => {
+    if (enableImageUpload && editorRef.current) {
+      return setupDragAndDrop(editorRef.current);
+    }
+  }, [enableImageUpload, setupDragAndDrop]);
+
+  // Image upload handlers
+  const handleImageUpload = async (files: File[]) => {
+    if (!enableImageUpload || !projectId || !bugId) return;
+
+    try {
+      const results = await imageUpload.uploadMultipleImages(files, projectId, bugId);
+      
+      // Insert markdown for each uploaded image
+      results.forEach((result) => {
+        const imageMarkdown = `![${result.originalName}](${result.url} "${result.originalName}")`;
+        
+        if (onImageInsert) {
+          onImageInsert(imageMarkdown);
+        } else {
+          // Insert at cursor position or end of content
+          const cursorPos = editorRef.current?.selectionStart || content.length;
+          const beforeCursor = content.substring(0, cursorPos);
+          const afterCursor = content.substring(cursorPos);
+          const newContent = beforeCursor + (beforeCursor.endsWith('\n') ? '' : '\n') + imageMarkdown + '\n' + afterCursor;
+          onChange(newContent);
+        }
+      });
+    } catch (error) {
+      console.error('Image upload failed:', error);
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (!enableImageUpload || !projectId || !bugId) return;
+    
+    const clipboardData = e.clipboardData;
+    const items = Array.from(clipboardData.items);
+    const imageItems = items.filter(item => item.type.startsWith('image/'));
+    
+    if (imageItems.length > 0) {
+      e.preventDefault();
+      
+      const files = imageItems
+        .map(item => item.getAsFile())
+        .filter((file): file is File => file !== null);
+        
+      if (files.length > 0) {
+        handleImageUpload(files);
+      }
+    }
+  };
+
+  const handleImageButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      handleImageUpload(files);
+    }
+    // Clear the input so the same file can be selected again
+    e.target.value = '';
+  };
+
+  const handleImageClick = (imageUrl: string, altText: string) => {
+    // Extract original filename from alt text or URL
+    const originalName = altText || imageUrl.split('/').pop() || 'image.jpg';
+    
+    setImageModal({
+      isOpen: true,
+      imageUrl,
+      altText,
+      originalName
+    });
+  };
+
+  const closeImageModal = () => {
+    setImageModal({
+      isOpen: false,
+      imageUrl: '',
+      altText: '',
+      originalName: ''
+    });
+  };
 
   // Ultra-smooth scroll synchronization using RAF
   const isSyncingRef = useRef(false);
@@ -239,7 +359,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
   // Memoized render content for optimal performance
   const renderContent = useMemo(() => {
     if (language === 'markdown') {
-      const CodeBlock = ({ className, children, ...props }: any) => {
+      const CodeBlock = ({ className, children, ...props }: { className?: string; children: React.ReactNode; [key: string]: unknown }) => {
         // Handle inline code (no className or no language-)
         if (!className || !className.includes('language-')) {
           return (
@@ -284,9 +404,9 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
         );
       };
 
-      const PreBlock = ({ children, className, ...props }: any) => {
+      const PreBlock = ({ children }: { children: React.ReactNode }) => {
         // Function to recursively extract text content
-        const extractTextContent = (node: any): string => {
+        const extractTextContent = (node: unknown): string => {
           if (typeof node === 'string') {
             return node;
           }
@@ -297,10 +417,10 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
             return node.map(extractTextContent).join('');
           }
           if (node && typeof node === 'object') {
-            if (node.props && node.props.children) {
+            if ('props' in node && node.props && typeof node.props === 'object' && 'children' in node.props) {
               return extractTextContent(node.props.children);
             }
-            if (node.children) {
+            if ('children' in node) {
               return extractTextContent(node.children);
             }
             return '';
@@ -308,12 +428,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
           return '';
         };
 
-        // Extract language from className
-        let codeLanguage = 'text';
-        if (children && children.props && children.props.className) {
-          const match = /language-(\w+)/.exec(children.props.className);
-          codeLanguage = match ? match[1] : 'text';
-        }
+        // Note: Language detection is handled by SyntaxHighlighter internally
 
         // Extract the actual code content
         const codeContent = extractTextContent(children);
@@ -347,7 +462,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
                   }
                 }}
                 useInlineStyles={true}
-                PreTag={({ children, ...props }: any) => (
+                PreTag={({ children, ...props }: { children: React.ReactNode; style?: React.CSSProperties; [key: string]: unknown }) => (
                   <div 
                     {...props} 
                     style={{
@@ -395,6 +510,22 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
               overrides: {
                 code: CodeBlock,
                 pre: PreBlock,
+                img: {
+                  component: ({ src, alt, title, ...props }: { src: string; alt?: string; title?: string; [key: string]: unknown }) => (
+                    <img
+                      src={src}
+                      alt={alt}
+                      title={title}
+                      onClick={() => handleImageClick(src, alt || title || '')}
+                      className="cursor-pointer hover:opacity-80 transition-opacity max-w-full h-auto rounded border"
+                      style={{
+                        border: `1px solid ${isDark ? '#374151' : '#d1d5db'}`,
+                        marginBottom: '1rem'
+                      }}
+                      {...props}
+                    />
+                  )
+                },
                 h1: { props: { style: { color: isDark ? '#ffffff' : '#000000', fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '1rem' } } },
                 h2: { props: { style: { color: isDark ? '#ffffff' : '#000000', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.75rem' } } },
                 h3: { props: { style: { color: isDark ? '#ffffff' : '#000000', fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '0.5rem' } } },
@@ -446,7 +577,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
             }}
             showLineNumbers={true}
             wrapLongLines={false}
-            PreTag={({ children, ...props }: any) => (
+            PreTag={({ children, ...props }: { children: React.ReactNode; style?: React.CSSProperties; [key: string]: unknown }) => (
               <div 
                 {...props} 
                 style={{
@@ -522,7 +653,42 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
           </span>
         </div>
 
-        {/* View Mode Toggles */}
+        <div className="flex items-center space-x-2">
+          {/* Image Upload Button */}
+          {enableImageUpload && (
+            <>
+              <button
+                onClick={handleImageButtonClick}
+                disabled={imageUpload.state.uploading || !projectId || !bugId}
+                className={`flex items-center px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
+                  imageUpload.state.uploading
+                    ? (isDark ? 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed' : 'bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed')
+                    : (isDark 
+                        ? 'bg-gray-700 text-gray-200 border-gray-600 hover:bg-gray-600' 
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      )
+                }`}
+                title="Upload Image"
+              >
+                {imageUpload.state.uploading ? (
+                  <Loader size={12} className="mr-1 animate-spin" />
+                ) : (
+                  <ImageIcon size={12} className="mr-1" />
+                )}
+                {imageUpload.state.uploading ? 'Uploading...' : 'Image'}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={handleFileInputChange}
+                className="hidden"
+              />
+            </>
+          )}
+
+          {/* View Mode Toggles */}
         <div className="flex items-center space-x-1">
           <button
             onClick={() => setViewMode('edit')}
@@ -559,6 +725,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
           </button>
         </div>
       </div>
+    </div>
 
       {/* Editor Content */}
       <div className="flex-1 min-h-0 overflow-hidden">
@@ -597,6 +764,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
                 onChange={(e) => onChange(e.target.value)}
                 onScroll={handleEditorScroll}
                 onBlur={onBlur}
+                onPaste={handlePaste}
                 placeholder={placeholder}
                 className={`w-full h-full resize-none focus:outline-none text-sm font-mono leading-relaxed overflow-auto ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}
                 style={{
@@ -655,6 +823,68 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
           </div>
         ) : viewMode === 'edit' ? (
           <div className="h-full flex min-w-0 relative">
+            {/* Drag and Drop Overlay */}
+            {isDragging && enableImageUpload && (
+              <div className={`absolute inset-0 z-50 flex items-center justify-center border-2 border-dashed ${
+                isDark ? 'border-blue-400 bg-blue-900/20' : 'border-blue-500 bg-blue-50/90'
+              }`}>
+                <div className={`text-center p-8 ${isDark ? 'text-blue-300' : 'text-blue-600'}`}>
+                  <Upload size={48} className="mx-auto mb-4" />
+                  <p className="text-lg font-medium mb-2">Drop Images Here</p>
+                  <p className="text-sm opacity-75">PNG, JPG, WebP, GIF supported</p>
+                </div>
+              </div>
+            )}
+
+            {/* Upload Progress Indicator */}
+            {imageUpload.state.uploading && enableImageUpload && (
+              <div className={`absolute top-4 right-4 z-40 p-3 rounded-lg border ${
+                isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+              } shadow-lg`}>
+                <div className="flex items-center space-x-3">
+                  <Loader size={16} className="animate-spin text-blue-500" />
+                  <div className="flex flex-col">
+                    <span className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>
+                      {imageUpload.state.stage}
+                    </span>
+                    <div className={`w-32 h-1.5 rounded-full mt-1 ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                      <div 
+                        className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                        style={{ width: `${imageUpload.state.progress}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {imageUpload.state.error && enableImageUpload && (
+              <div className={`absolute top-4 right-4 z-40 p-3 rounded-lg border ${
+                isDark ? 'bg-red-900/50 border-red-700' : 'bg-red-50 border-red-200'
+              } shadow-lg max-w-xs`}>
+                <div className="flex items-start space-x-2">
+                  <X size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className={`text-sm font-medium ${isDark ? 'text-red-300' : 'text-red-800'}`}>
+                      Upload Failed
+                    </p>
+                    <p className={`text-xs mt-1 ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+                      {imageUpload.state.error}
+                    </p>
+                    <button
+                      onClick={imageUpload.clearError}
+                      className={`text-xs mt-2 px-2 py-1 rounded transition-colors ${
+                        isDark ? 'bg-red-800 text-red-200 hover:bg-red-700' : 'bg-red-100 text-red-700 hover:bg-red-200'
+                      }`}
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Line Numbers */}
             <div 
               className={`flex flex-col text-right select-none flex-shrink-0 absolute left-0 top-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
@@ -687,6 +917,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
               onChange={(e) => onChange(e.target.value)}
               onScroll={handleEditorScroll}
               onBlur={onBlur}
+              onPaste={handlePaste}
               placeholder={placeholder}
               className={`flex-1 h-full resize-none focus:outline-none text-sm font-mono leading-relaxed min-w-0 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}
               style={{
@@ -707,6 +938,16 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
           </div>
         )}
       </div>
+
+      {/* Image Modal */}
+      <ImageModal
+        isOpen={imageModal.isOpen}
+        onClose={closeImageModal}
+        imageUrl={imageModal.imageUrl}
+        altText={imageModal.altText}
+        originalName={imageModal.originalName}
+      />
+
     </div>
   );
 };

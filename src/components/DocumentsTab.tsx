@@ -150,6 +150,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
     if (selectedDoc) {
       deleteDocument(selectedDoc.id);
       setSelectedDoc(null);
+      setShowDeleteConfirmation(false);
     }
   };
 
@@ -299,35 +300,56 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
         <div className={`flex-1 overflow-y-auto px-3 pb-3 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}>
           <div className="space-y-1">
             {filteredDocs.map((doc) => (
-              <motion.button
+              <div
                 key={doc.id}
-                onClick={() => {
-                  setSelectedDoc(doc);
-                }}
-                className={`w-full text-left p-3 transition-all duration-100 border-l-2 ${
+                className={`relative group transition-all duration-100 border-l-2 ${
                   selectedDoc?.id === doc.id
                     ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
                     : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
                 }`}
-                whileHover={{ x: 8 }}
-                transition={{ duration: 0.08, ease: "easeOut" }}
               >
-                <div className="flex items-center space-x-3">
-                  <FileText size={14} className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
-                  <div className="min-w-0 flex-1">
-                    <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'} truncate`}>{doc.title}</div>
-                    <div className="flex items-center space-x-2 mt-0.5">
-                      <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} capitalize`}>
-                        {doc.type ? doc.type.replace('-', ' ') : 'Document'}
-                      </span>
-                      <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
-                      <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                        {new Date(doc.updatedAt).toLocaleDateString()}
-                      </span>
+                <motion.button
+                  onClick={() => {
+                    setSelectedDoc(doc);
+                  }}
+                  className="w-full text-left p-3 pr-10"
+                  whileHover={{ x: 8 }}
+                  transition={{ duration: 0.08, ease: "easeOut" }}
+                >
+                  <div className="flex items-center space-x-3">
+                    <FileText size={14} className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'} truncate`}>{doc.title}</div>
+                      <div className="flex items-center space-x-2 mt-0.5">
+                        <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} capitalize`}>
+                          {doc.type ? doc.type.replace('-', ' ') : 'Document'}
+                        </span>
+                        <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
+                        <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                          {new Date(doc.updatedAt).toLocaleDateString()}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </motion.button>
+                </motion.button>
+                
+                {/* Inline document delete button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedDoc(doc); // Select document first to ensure it's set for deletion
+                    handleDeleteDocument();
+                  }}
+                  className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 rounded transition-all duration-200 opacity-0 group-hover:opacity-100 ${
+                    isDark 
+                      ? 'hover:bg-red-900/50 text-red-400 hover:text-red-300' 
+                      : 'hover:bg-red-100 text-red-500 hover:text-red-600'
+                  }`}
+                  title="Delete Document"
+                >
+                  <FiTrash size={12} />
+                </button>
+              </div>
             ))}
           </div>
 
@@ -392,17 +414,6 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
                     }`}
                   >
                     Save Changes
-                  </button>
-                  <button
-                    onClick={handleDeleteDocument}
-                    className={`px-4 py-2.5 text-sm font-medium transition-all duration-200 border ${
-                      isDark 
-                        ? 'bg-red-900 hover:bg-red-800 text-red-200 border-red-800' 
-                        : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
-                    }`}
-                    title="Delete Document"
-                  >
-                    <FiTrash className="w-4 h-4" />
                   </button>
                 </div>
               </div>

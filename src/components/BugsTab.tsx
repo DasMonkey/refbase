@@ -6,8 +6,10 @@ import { FaFire } from 'react-icons/fa';
 import { Project, Bug as BugType, Task } from '../types';
 import { useSupabaseProjects } from '../hooks/useSupabaseProjects';
 import { useTheme } from '../contexts/ThemeContext';
-import { EnhancedEditor } from './ui/EnhancedEditor';
+import { BlockEditor } from './ui/BlockEditor';
 import { DeleteConfirmationModal } from './ui/DeleteConfirmationModal';
+import { stringToBlocks, blocksToString } from '../utils/blockNoteUtils';
+import { KanbanBoard } from './KanbanBoard';
 
 // Custom sorting icons
 const SortAscIcon = ({ size = 14, className = "" }) => (
@@ -28,6 +30,7 @@ const SortDescIcon = ({ size = 14, className = "" }) => (
 
 interface BugsTabProps {
   project: Project;
+  filterByFeatureId?: string; // Filter bugs to show only ones linked to this feature
 }
 
 const bugTypes = [
@@ -67,22 +70,28 @@ const statusIcons = {
   'wont-fix': Tag,
 };
 
-export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
-  const { bugs, createBug, updateBug, deleteBug } = useSupabaseProjects();
+export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) => {
+  const { bugs, createBug, updateBug, deleteBug, features, tasks, createTask, updateTask, deleteTask } = useSupabaseProjects();
   const { isDark } = useTheme();
+  
+  // Use different localStorage keys for sub-tab vs main tab to avoid conflicts
+  const storagePrefix = filterByFeatureId ? `featureBug_${filterByFeatureId}` : `selectedBug_${project.id}`;
+  const subTabStorageKey = filterByFeatureId ? `featureBugSubTab_${filterByFeatureId}` : `bugSubTab_${project.id}`;
+  
   const [selectedBug, setSelectedBug] = useState<BugType | null>(() => {
-    const savedBugId = localStorage.getItem(`selectedBug_${project.id}`);
+    const savedBugId = localStorage.getItem(storagePrefix);
     if (savedBugId) {
-      return null;
+      return null; // Will be restored in useEffect
     }
     return null;
   });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newBugTitle, setNewBugTitle] = useState('');
   const [newBugType, setNewBugType] = useState<BugType['type']>('functional-bug');
-  const [activeSubTab, setActiveSubTab] = useState<'info' | 'tasks' | 'reproduction' | 'analysis' | 'comments' | 'logs'>(() => {
-    const saved = localStorage.getItem(`bugSubTab_${project.id}`);
-    return (saved as 'info' | 'tasks' | 'reproduction' | 'analysis' | 'comments' | 'logs') || 'info';
+  const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
+  const [activeSubTab, setActiveSubTab] = useState<'info' | 'tasks' | 'reproduction' | 'analysis'>(() => {
+    const saved = localStorage.getItem(subTabStorageKey);
+    return (saved as 'info' | 'tasks' | 'reproduction' | 'analysis') || 'info';
   });
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editingTitle, setEditingTitle] = useState('');
@@ -90,6 +99,8 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
   const [showStatusPopup, setShowStatusPopup] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFeatureFilter, setSelectedFeatureFilter] = useState<string | null>(null);
+  const [showFeatureFilterPopup, setShowFeatureFilterPopup] = useState(false);
   const [showFilterPopup, setShowFilterPopup] = useState(false);
   const [sortBy, setSortBy] = useState<'name' | 'created' | 'updated' | 'severity'>('created');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -110,6 +121,8 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
     return saved ? JSON.parse(saved) : false; // Default collapsed
   });
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const forceSaveRef = useRef<(() => void) | null>(null);
+  const [localTasks, setLocalTasks] = useState<Task[]>([]);
 
   // Check if filter is active (not default)
   const isFilterActive = sortBy !== 'created' || sortOrder !== 'desc';
@@ -120,16 +133,28 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
     setSortOrder('desc');
   };
 
-  const projectBugs = bugs.filter(b => b.projectId === project.id);
+  const projectBugs = bugs.filter(b => 
+    b.projectId === project.id && 
+    (filterByFeatureId ? b.featureId === filterByFeatureId : true)
+  );
   
-  // Filter and sort bugs based on search query and sort options
+  // Get project features for feature filter dropdown
+  const projectFeatures = features.filter(f => f.projectId === project.id);
+  
+  // Filter and sort bugs based on search query, feature filter, and sort options
   const filteredBugs = projectBugs
-    .filter(bug => 
-      searchQuery === '' || 
-      bug.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      bug.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      bug.content?.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    .filter(bug => {
+      // Search filter
+      const matchesSearch = searchQuery === '' || 
+        bug.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        bug.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        bug.content?.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      // Feature filter
+      const matchesFeature = !selectedFeatureFilter || bug.featureId === selectedFeatureFilter;
+      
+      return matchesSearch && matchesFeature;
+    })
     .sort((a, b) => {
       let comparison = 0;
       
@@ -158,6 +183,17 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
   const completedBugs = filteredBugs.filter(bug => bug.status === 'fixed');
   const othersBugs = filteredBugs.filter(bug => bug.status === 'wont-fix');
 
+  // Tasks for selected bug
+  const bugTasks = React.useMemo(() => 
+    selectedBug ? tasks.filter(t => t.projectId === project.id && t.bugId === selectedBug.id) : [], 
+    [tasks, project.id, selectedBug?.id]
+  );
+
+  // Sync localTasks with bugTasks
+  useEffect(() => {
+    setLocalTasks(bugTasks);
+  }, [bugTasks]);
+
   // Save section expanded states
   useEffect(() => {
     localStorage.setItem(`openBugsExpanded_${project.id}`, JSON.stringify(isOpenExpanded));
@@ -168,28 +204,33 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
 
   // Restore selected bug when bugs are loaded
   useEffect(() => {
-    const savedBugId = localStorage.getItem(`selectedBug_${project.id}`);
+    const savedBugId = localStorage.getItem(storagePrefix);
     if (savedBugId && bugs.length > 0 && !selectedBug) {
-      const bug = bugs.find(b => b.id === savedBugId && b.projectId === project.id);
+      // For filtered bugs, ensure the bug matches the filter
+      const bug = bugs.find(b => 
+        b.id === savedBugId && 
+        b.projectId === project.id && 
+        (!filterByFeatureId || b.featureId === filterByFeatureId)
+      );
       if (bug) {
         setSelectedBug(bug);
       }
     }
-  }, [bugs, project.id, selectedBug]);
+  }, [bugs, project.id, selectedBug, storagePrefix, filterByFeatureId]);
 
   // Save selectedBug to localStorage whenever it changes
   useEffect(() => {
     if (selectedBug) {
-      localStorage.setItem(`selectedBug_${project.id}`, selectedBug.id);
+      localStorage.setItem(storagePrefix, selectedBug.id);
     } else {
-      localStorage.removeItem(`selectedBug_${project.id}`);
+      localStorage.removeItem(storagePrefix);
     }
-  }, [selectedBug, project.id]);
+  }, [selectedBug, storagePrefix]);
 
   // Save activeSubTab to localStorage whenever it changes
   useEffect(() => {
-    localStorage.setItem(`bugSubTab_${project.id}`, activeSubTab);
-  }, [activeSubTab, project.id]);
+    localStorage.setItem(subTabStorageKey, activeSubTab);
+  }, [activeSubTab, subTabStorageKey]);
 
   // Reset scroll position when switching bugs
   useEffect(() => {
@@ -198,20 +239,67 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
     }
   }, [selectedBug?.id]);
 
+
+  const handleTasksChange = async (newTasks: Task[]) => {
+    setLocalTasks(newTasks);
+    
+    for (const task of newTasks) {
+      const originalTask = bugTasks.find(t => t.id === task.id);
+      
+      if (originalTask && originalTask.status !== task.status) {
+        await updateTask(task.id, { status: task.status });
+      } else if (!originalTask && task.id.startsWith('temp-')) {
+        try {
+          const createdTask = await createTask(project.id, task.title, task.description, task.priority, task.status, undefined, selectedBug?.id);
+          setLocalTasks(prevTasks => 
+            prevTasks.map(t => t.id === task.id ? { ...t, id: createdTask.id, projectId: project.id } : t)
+          );
+        } catch (error) {
+          console.error('Failed to create task:', error);
+        }
+      }
+    }
+
+    const permanentTasks = newTasks.filter(t => !t.id.startsWith('temp-'));
+    bugTasks.forEach(originalTask => {
+      if (!permanentTasks.find(t => t.id === originalTask.id)) {
+        deleteTask(originalTask.id);
+      }
+    });
+  };
+
+  const handleUpdateTask = async (taskId: string, newTitle: string) => {
+    const updatedTasks = localTasks.map(task => 
+      task.id === taskId ? { ...task, title: newTitle } : task
+    );
+    setLocalTasks(updatedTasks);
+    
+    if (!taskId.startsWith('temp-')) {
+      try {
+        await updateTask(taskId, { title: newTitle });
+      } catch (error) {
+        console.error('Failed to update task:', error);
+      }
+    }
+  };
+
   const handleCreateBug = async () => {
     if (newBugTitle.trim()) {
-      const bug = await createBug(project.id, newBugTitle, newBugType);
+      // Use filterByFeatureId if provided, otherwise use selectedFeatureId
+      const featureIdToUse = filterByFeatureId || selectedFeatureId;
+      const bug = await createBug(project.id, newBugTitle, newBugType, featureIdToUse);
       setSelectedBug(bug);
       setShowCreateModal(false);
       setNewBugTitle('');
       setNewBugType('functional-bug');
+      setSelectedFeatureId(null);
     }
   };
 
-  const handleSaveBug = () => {
+  const handleSaveBug = (contentOverride?: string) => {
     if (selectedBug) {
       updateBug(selectedBug.id, { 
-        content: selectedBug.content,
+        content: contentOverride || selectedBug.content,
         language: selectedBug.language 
       });
     }
@@ -223,10 +311,17 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
     }
   };
 
+  const handleDeleteBugFromList = (bug: BugType) => {
+    setSelectedBug(bug);
+    setShowDeleteConfirmation(true);
+  };
+
+
   const confirmDeleteBug = () => {
     if (selectedBug) {
       deleteBug(selectedBug.id);
       setSelectedBug(null);
+      setShowDeleteConfirmation(false);
     }
   };
 
@@ -236,11 +331,28 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
     }
   };
 
-  const handleLanguageChange = (language: string) => {
+  const handleSaveWithContent = (content: string) => {
     if (selectedBug) {
-      setSelectedBug({ ...selectedBug, language });
+      updateBug(selectedBug.id, { 
+        content,
+        language: selectedBug.language 
+      });
     }
   };
+
+  const forceSaveCurrentBug = () => {
+    if (forceSaveRef.current) {
+      forceSaveRef.current();
+    }
+  };
+
+  const handleBugSelect = (bug: BugType) => {
+    // Force save current bug before switching
+    forceSaveCurrentBug();
+    setSelectedBug(bug);
+  };
+
+
 
   const handleStartTitleEdit = () => {
     if (selectedBug) {
@@ -292,8 +404,6 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
     { id: 'tasks' as const, label: 'Tasks', icon: CheckSquare },
     { id: 'reproduction' as const, label: 'Reproduction', icon: Settings },
     { id: 'analysis' as const, label: 'Analysis', icon: Brain },
-    { id: 'comments' as const, label: 'Comments', icon: MessageSquare },
-    { id: 'logs' as const, label: 'Logs', icon: History },
   ];
 
   const renderSubTabContent = () => {
@@ -308,10 +418,6 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
         return renderReproductionSection();
       case 'analysis':
         return renderAnalysisSection();
-      case 'comments':
-        return renderCommentsSection();
-      case 'logs':
-        return renderLogsSection();
       default:
         return renderInfoSection();
     }
@@ -323,18 +429,20 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
     return (
       <div className={`flex-1 min-h-0`} style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
         <div className="h-full p-4">
-          <div className={`h-full border rounded-lg overflow-hidden`} style={{ 
+          <div className={`h-full border rounded-lg`} style={{ 
             backgroundColor: isDark ? '#111111' : '#ffffff',
             borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
           }}>
-            <EnhancedEditor
-              content={selectedBug.content}
-              onChange={handleContentChange}
-              language={selectedBug.language || 'markdown'}
-              onLanguageChange={handleLanguageChange}
+            <BlockEditor
+              key={`${selectedBug.id}-${selectedBug.updatedAt?.getTime()}`}
+              content={stringToBlocks(selectedBug.content)}
+              onChange={(blocks) => handleContentChange(blocksToString(blocks))}
               placeholder="Describe the bug details, steps to reproduce, expected vs actual behavior, environment info..."
-              fileName={selectedBug.title}
-              onBlur={handleSaveBug}
+              onSave={(blocks) => handleSaveWithContent(blocksToString(blocks))}
+              forceSaveRef={forceSaveRef}
+              enableImageUpload={true}
+              projectId={project.id}
+              bugId={selectedBug.id}
             />
           </div>
         </div>
@@ -347,9 +455,10 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
 
     return (
       <div className={`flex-1 min-h-0 overflow-hidden`} style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
-        <BugKanbanBoard 
-          bug={selectedBug} 
-          project={project}
+        <KanbanBoard 
+          tasks={localTasks}
+          onTasksChange={handleTasksChange}
+          onUpdateTask={handleUpdateTask}
         />
       </div>
     );
@@ -443,48 +552,6 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
     );
   };
 
-  const renderCommentsSection = () => {
-    return (
-      <div className={`flex-1 min-h-0 p-4`} style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
-        <div 
-          className={`w-full h-full border rounded-lg p-6 overflow-y-auto ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`} 
-          style={{ 
-            backgroundColor: isDark ? '#111111' : '#ffffff',
-            borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
-          }}
-        >
-          <div className="text-center py-16">
-            <MessageSquare className={`w-12 h-12 mx-auto mb-4 ${isDark ? 'text-gray-600' : 'text-gray-400'}`} />
-            <h3 className={`text-lg font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>Comments & Discussion</h3>
-            <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>No comments yet</p>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderLogsSection = () => {
-    return (
-      <div className={`flex-1 min-h-0 p-4`} style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
-        <div 
-          className={`w-full h-full border rounded-lg p-6 overflow-y-auto ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`} 
-          style={{ 
-            backgroundColor: isDark ? '#111111' : '#ffffff',
-            borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
-          }}
-        >
-          <div className="space-y-4">
-            <h3 className={`text-lg font-semibold ${isDark ? 'text-gray-200' : 'text-gray-800'} mb-4`}>Bug Activity Log</h3>
-            
-            <div className="text-center py-16">
-              <History className={`w-12 h-12 mx-auto mb-4 ${isDark ? 'text-gray-600' : 'text-gray-400'}`} />
-              <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>No activity log available</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="flex h-full w-full overflow-hidden">
@@ -495,7 +562,10 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
       }}>
         <div className={`p-4 border-b`} style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => {
+              forceSaveCurrentBug();
+              setShowCreateModal(true);
+            }}
             className={`w-full flex items-center justify-center py-2.5 px-4 text-sm font-medium transition-all duration-200 border ${
               isDark 
                 ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700 hover:border-gray-600' 
@@ -507,27 +577,113 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
           </button>
         </div>
 
+        {/* Search Bar */}
         <div className={`p-3`}>
+          <div className="relative">
+            <Search 
+              size={16} 
+              className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
+                isDark ? 'text-gray-400' : 'text-gray-500'
+              }`} 
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search bugs..."
+              className={`w-full pl-10 pr-4 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200`}
+              style={{ 
+                borderColor: isDark ? '#2a2a2a' : '#e2e8f0',
+                backgroundColor: isDark ? '#111111' : '#ffffff',
+                color: isDark ? '#ffffff' : '#000000'
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Filter Buttons */}
+        <div className={`px-3 pb-3`}>
           <div className="flex items-center space-x-2">
-            <div className="relative flex-1">
-              <Search 
-                size={16} 
-                className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
-                  isDark ? 'text-gray-400' : 'text-gray-500'
-                }`} 
-              />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search bugs..."
-                className={`w-full pl-10 pr-4 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200`}
-                style={{ 
-                  borderColor: isDark ? '#2a2a2a' : '#e2e8f0',
-                  backgroundColor: isDark ? '#111111' : '#ffffff',
-                  color: isDark ? '#ffffff' : '#000000'
-                }}
-              />
+            {/* Feature Filter Dropdown */}
+            <div className="relative flex-1 min-w-0">
+              <button
+                onClick={() => setShowFeatureFilterPopup(!showFeatureFilterPopup)}
+                className={`relative w-full px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-between ${
+                  selectedFeatureFilter
+                    ? (isDark ? 'bg-blue-900/50 border-blue-700 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700')
+                    : (isDark ? 'border-gray-600 text-gray-400 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50')
+                }`}
+              >
+                <span className="truncate mr-2">{selectedFeatureFilter ? projectFeatures.find(f => f.id === selectedFeatureFilter)?.title || 'Feature' : 'All Features'}</span>
+                <div className="flex items-center space-x-1 flex-shrink-0">
+                  {selectedFeatureFilter && (
+                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  )}
+                  <ChevronDown size={12} />
+                </div>
+              </button>
+              
+              {showFeatureFilterPopup && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-[9998]" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowFeatureFilterPopup(false);
+                    }}
+                  />
+                  <div 
+                    className={`absolute top-full left-0 mt-1 w-64 rounded-lg shadow-xl z-[9999] max-h-60 overflow-y-auto ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ 
+                      backgroundColor: isDark ? '#1f2937' : '#ffffff',
+                      border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`
+                    }}
+                  >
+                    <div className="p-2">
+                      <button
+                        onClick={() => {
+                          setSelectedFeatureFilter(null);
+                          setShowFeatureFilterPopup(false);
+                        }}
+                        className={`w-full text-left p-2 text-sm rounded transition-colors ${
+                          !selectedFeatureFilter 
+                            ? (isDark ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-900') 
+                            : (isDark ? 'hover:bg-gray-700 text-gray-200' : 'hover:bg-gray-100 text-gray-700')
+                        }`}
+                      >
+                        All Features
+                      </button>
+                      {projectFeatures.map((feature) => {
+                        const featureBugCount = projectBugs.filter(b => b.featureId === feature.id).length;
+                        return (
+                          <button
+                            key={feature.id}
+                            onClick={() => {
+                              setSelectedFeatureFilter(feature.id);
+                              setShowFeatureFilterPopup(false);
+                            }}
+                            className={`w-full text-left p-2 text-sm rounded transition-colors ${
+                              selectedFeatureFilter === feature.id 
+                                ? (isDark ? 'bg-blue-700 text-white' : 'bg-blue-100 text-blue-900') 
+                                : (isDark ? 'hover:bg-gray-700 text-gray-200' : 'hover:bg-gray-100 text-gray-700')
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="truncate mr-2">{feature.title}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                isDark ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600'
+                              }`}>
+                                {featureBugCount}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             
             <div className="relative">
@@ -628,9 +784,10 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
             isExpanded={isOpenExpanded}
             onToggle={() => setIsOpenExpanded(!isOpenExpanded)}
             selectedBug={selectedBug}
-            onBugSelect={setSelectedBug}
+            onBugSelect={handleBugSelect}
             isDark={isDark}
             defaultOpacity={1}
+            onDeleteBug={handleDeleteBugFromList}
           />
 
           {/* In Progress Bugs Section */}
@@ -642,9 +799,10 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
             isExpanded={isInProgressExpanded}
             onToggle={() => setIsInProgressExpanded(!isInProgressExpanded)}
             selectedBug={selectedBug}
-            onBugSelect={setSelectedBug}
+            onBugSelect={handleBugSelect}
             isDark={isDark}
             defaultOpacity={1}
+            onDeleteBug={handleDeleteBugFromList}
           />
 
           {/* Completed Bugs Section */}
@@ -656,9 +814,10 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
             isExpanded={isCompletedExpanded}
             onToggle={() => setIsCompletedExpanded(!isCompletedExpanded)}
             selectedBug={selectedBug}
-            onBugSelect={setSelectedBug}
+            onBugSelect={handleBugSelect}
             isDark={isDark}
             defaultOpacity={0.75}
+            onDeleteBug={handleDeleteBugFromList}
           />
 
           {/* Others (Won't Fix) Bugs Section */}
@@ -670,9 +829,10 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
             isExpanded={isOthersExpanded}
             onToggle={() => setIsOthersExpanded(!isOthersExpanded)}
             selectedBug={selectedBug}
-            onBugSelect={setSelectedBug}
+            onBugSelect={handleBugSelect}
             isDark={isDark}
             defaultOpacity={0.75}
+            onDeleteBug={handleDeleteBugFromList}
           />
 
           {/* Empty State */}
@@ -858,6 +1018,24 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
                         </>
                       )}
                     </div>
+
+                    {/* Feature tag */}
+                    {selectedBug.featureId && (() => {
+                      const linkedFeature = features.find(f => f.id === selectedBug.featureId);
+                      return linkedFeature ? (
+                        <span
+                          className={`px-2 py-1 text-xs font-medium border ${
+                            isDark 
+                              ? 'bg-blue-900/50 text-blue-200 border-blue-700' 
+                              : 'bg-blue-100 text-blue-700 border-blue-200'
+                          }`}
+                          title={`Linked feature: ${linkedFeature.title}`}
+                          style={{ padding: '4px 8px' }}
+                        >
+                          📋 {linkedFeature.title}
+                        </span>
+                      ) : null;
+                    })()}
                     
                     <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
                       Reported {new Date(selectedBug.createdAt).toLocaleDateString()}
@@ -865,20 +1043,6 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
                   </div>
                 </div>
                 
-                {/* Delete button aligned right */}
-                {activeSubTab === 'info' && (
-                  <button
-                    onClick={handleDeleteBug}
-                    className={`px-4 py-2.5 text-sm font-medium transition-all duration-200 border ${
-                      isDark 
-                        ? 'bg-red-900 hover:bg-red-800 text-red-200 border-red-800' 
-                        : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
-                    }`}
-                    title="Delete Bug"
-                  >
-                    <FiTrash className="w-4 h-4" />
-                  </button>
-                )}
               </div>
 
               {/* Sub Navigation Row */}
@@ -933,7 +1097,12 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
               borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
             }}
           >
-            <h3 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'} mb-6`}>Report New Bug</h3>
+            <h3 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'} mb-6`}>
+              {filterByFeatureId ? 
+                `Report Bug for "${features.find(f => f.id === filterByFeatureId)?.title || 'Feature'}"` : 
+                'Report New Bug'
+              }
+            </h3>
             
             <div className="space-y-4">
               <div>
@@ -953,6 +1122,52 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project }) => {
                   }}
                 />
               </div>
+
+              {/* Only show feature selection if not filtering by feature */}
+              {!filterByFeatureId && (
+                <div>
+                  <label className={`block text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>
+                    Related Feature (optional)
+                  </label>
+                  <select
+                    value={selectedFeatureId || ''}
+                    onChange={(e) => setSelectedFeatureId(e.target.value || null)}
+                    className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200`}
+                    style={{ 
+                      borderColor: isDark ? '#2a2a2a' : '#e2e8f0',
+                      backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                      color: isDark ? '#ffffff' : '#000000'
+                    }}
+                  >
+                    <option value="">No feature selected</option>
+                    {features
+                      .filter(feature => feature.projectId === project.id)
+                      .map((feature) => (
+                        <option key={feature.id} value={feature.id}>
+                          {feature.title}
+                        </option>
+                      ))
+                    }
+                  </select>
+                </div>
+              )}
+              
+              {/* Show feature info when filtering by feature */}
+              {filterByFeatureId && (
+                <div className={`p-3 rounded-xl border ${isDark ? 'border-gray-700 bg-blue-900/20' : 'border-blue-200 bg-blue-50'}`}>
+                  <div className="flex items-center space-x-2">
+                    <span className={`text-sm font-medium ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
+                      Linked to Feature:
+                    </span>
+                    <span className={`text-sm ${isDark ? 'text-blue-200' : 'text-blue-800'} font-medium`}>
+                      {features.find(f => f.id === filterByFeatureId)?.title || 'Unknown Feature'}
+                    </span>
+                  </div>
+                  <p className={`text-xs mt-1 ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>
+                    This bug will automatically be linked to the current feature.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className={`block text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-3`}>
@@ -1029,6 +1244,7 @@ interface BugSectionProps {
   onBugSelect: (bug: BugType) => void;
   isDark: boolean;
   defaultOpacity: number;
+  onDeleteBug: (bug: BugType) => void;
 }
 
 const BugSection: React.FC<BugSectionProps> = ({
@@ -1041,7 +1257,8 @@ const BugSection: React.FC<BugSectionProps> = ({
   selectedBug,
   onBugSelect,
   isDark,
-  defaultOpacity
+  defaultOpacity,
+  onDeleteBug
 }) => {
   if (bugs.length === 0) return null;
 
@@ -1080,41 +1297,57 @@ const BugSection: React.FC<BugSectionProps> = ({
           {bugs.map((bug) => {
             const StatusIcon = statusIcons[bug.status];
             return (
-              <motion.button
+              <div
                 key={bug.id}
-                onClick={() => onBugSelect(bug)}
-                className={`w-full text-left p-3 transition-all duration-100 border-l-2 hover:opacity-100 ${
+                className={`relative group transition-all duration-100 border-l-2 hover:opacity-100 ${
                   selectedBug?.id === bug.id
                     ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
                     : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
                 }`}
                 style={{ opacity: defaultOpacity }}
-                whileHover={{ x: 8 }}
-                transition={{ duration: 0.08, ease: "easeOut" }}
               >
-                <div className="flex items-start space-x-3 w-full">
-                  <StatusIcon size={16} className={`flex-shrink-0 mt-0.5 ${
-                    bug.status === 'open' ? 'text-red-500' :
-                    bug.status === 'in-progress' ? 'text-blue-500' :
-                    bug.status === 'fixed' ? 'text-green-500' :
-                    'text-gray-500'
-                  }`} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between">
+                <motion.button
+                  onClick={() => onBugSelect(bug)}
+                  className="w-full text-left p-3 pr-10"
+                  whileHover={{ x: 8 }}
+                  transition={{ duration: 0.08, ease: "easeOut" }}
+                >
+                  <div className="flex items-start space-x-3 w-full">
+                    <StatusIcon size={16} className={`flex-shrink-0 mt-0.5 ${
+                      bug.status === 'open' ? 'text-red-500' :
+                      bug.status === 'in-progress' ? 'text-blue-500' :
+                      bug.status === 'fixed' ? 'text-green-500' :
+                      'text-gray-500'
+                    }`} />
+                    <div className="min-w-0 flex-1">
+                      {/* Bug name */}
                       <div className={`text-sm font-medium leading-tight ${
                         defaultOpacity === 1 
                           ? (isDark ? 'text-gray-200' : 'text-gray-800')
                           : (isDark ? 'text-gray-300' : 'text-gray-700')
-                      } truncate flex-1 min-w-0 pr-2`}>
+                      } truncate`}>
                         {bug.title}
                       </div>
-                      <span className={`text-xs px-2 py-1 rounded-md font-medium flex-shrink-0 ${severityColors[bug.severity]}`}>
-                        {bug.severity.charAt(0).toUpperCase() + bug.severity.slice(1)}
-                      </span>
                     </div>
                   </div>
-                </div>
-              </motion.button>
+                </motion.button>
+                
+                {/* Inline bug delete button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteBug(bug);
+                  }}
+                  className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 rounded transition-all duration-200 opacity-0 group-hover:opacity-100 ${
+                    isDark 
+                      ? 'hover:bg-red-900/50 text-red-400 hover:text-red-300' 
+                      : 'hover:bg-red-100 text-red-500 hover:text-red-600'
+                  }`}
+                  title="Delete Bug"
+                >
+                  <FiTrash size={12} />
+                </button>
+              </div>
             );
           })}
         </motion.div>
@@ -1123,417 +1356,3 @@ const BugSection: React.FC<BugSectionProps> = ({
   );
 };
 
-// Bug-specific Kanban Board Component
-interface BugKanbanBoardProps {
-  bug: BugType;
-  project: Project;
-}
-
-const BugKanbanBoard: React.FC<BugKanbanBoardProps> = ({ bug, project }) => {
-  const { tasks, createTask, updateTask, deleteTask } = useSupabaseProjects();
-  const [localTasks, setLocalTasks] = useState<Task[]>([]);
-  
-  // Filter tasks for this specific bug
-  const bugTasks = React.useMemo(() => 
-    tasks.filter(t => t.projectId === project.id && t.bugId === bug.id), 
-    [tasks, project.id, bug.id]
-  );
-
-  // Sync with Supabase when local tasks change
-  React.useEffect(() => {
-    setLocalTasks(bugTasks);
-  }, [bugTasks]);
-
-  const handleTasksChange = (newTasks: Task[]) => {
-    setLocalTasks(newTasks);
-    
-    // Find what changed and sync with Supabase
-    newTasks.forEach(task => {
-      const originalTask = bugTasks.find(t => t.id === task.id);
-      if (originalTask && originalTask.status !== task.status) {
-        updateTask(task.id, { status: task.status });
-      }
-      if (!originalTask && task.projectId === '') {
-        // New task - create with correct status and link to bug
-        createTask(project.id, task.title, task.description, task.priority, task.status, undefined, bug.id);
-      }
-    });
-
-    // Check for deleted tasks
-    bugTasks.forEach(originalTask => {
-      if (!newTasks.find(t => t.id === originalTask.id)) {
-        deleteTask(originalTask.id);
-      }
-    });
-  };
-
-  const statusColumns = [
-    { 
-      id: 'todo' as const, 
-      label: 'TODO', 
-      headingColor: 'text-yellow-200'
-    },
-    { 
-      id: 'in-progress' as const, 
-      label: 'In progress', 
-      headingColor: 'text-blue-200'
-    },
-    { 
-      id: 'fix-later' as const, 
-      label: 'Fix Later', 
-      headingColor: 'text-orange-200'
-    },
-    { 
-      id: 'done' as const, 
-      label: 'Complete', 
-      headingColor: 'text-emerald-200'
-    },
-  ];
-
-  return (
-    <div className="h-full w-full flex flex-col text-neutral-50" style={{ backgroundColor: '#0a0a0a' }}>
-      <div className="p-4 border-b border-neutral-700 flex-shrink-0">
-        <h3 className="text-lg font-semibold text-neutral-200 mb-2">
-          Tasks for: {bug.title}
-        </h3>
-        <p className="text-sm text-neutral-400">
-          Manage tasks specific to this bug report
-        </p>
-      </div>
-      <div className="flex-1 min-h-0 overflow-hidden p-4">
-        <div 
-          className="flex h-full w-full [&::-webkit-scrollbar]:hidden" 
-          style={{ 
-            scrollbarWidth: 'none', 
-            msOverflowStyle: 'none'
-          }}
-        >
-          {statusColumns.map((column) => (
-            <BugColumn
-              key={column.id}
-              title={column.label}
-              headingColor={column.headingColor}
-              tasks={localTasks}
-              column={column.id}
-              setTasks={handleTasksChange}
-              bugId={bug.id}
-              projectId={project.id}
-            />
-          ))}
-          <BugBurnBarrel setTasks={handleTasksChange} allTasks={localTasks} />
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Bug-specific Column Component (adapted from TasksTab)
-interface BugColumnProps {
-  title: string;
-  headingColor: string;
-  tasks: Task[];
-  column: Task['status'];
-  setTasks: (tasks: Task[]) => void;
-  bugId: string;
-  projectId: string;
-}
-
-const BugColumn: React.FC<BugColumnProps> = ({
-  title,
-  headingColor,
-  tasks,
-  column,
-  setTasks,
-  bugId,
-  projectId,
-}) => {
-  const [active, setActive] = useState(false);
-
-  const handleDragStart = (e: React.DragEvent, task: Task) => {
-    e.dataTransfer.setData("taskId", task.id);
-  };
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    const taskId = e.dataTransfer.getData("taskId");
-
-    setActive(false);
-    clearHighlights();
-
-    const indicators = getIndicators();
-    const { element } = getNearestIndicator(e, indicators);
-
-    const before = element.dataset.before || "-1";
-
-    if (before !== taskId) {
-      let copy = [...tasks];
-
-      let taskToTransfer = copy.find((c) => c.id === taskId);
-      if (!taskToTransfer) return;
-      taskToTransfer = { ...taskToTransfer, status: column };
-
-      copy = copy.filter((c) => c.id !== taskId);
-
-      const moveToBack = before === "-1";
-
-      if (moveToBack) {
-        copy.push(taskToTransfer);
-      } else {
-        const insertAtIndex = copy.findIndex((el) => el.id === before);
-        if (insertAtIndex === undefined) return;
-
-        copy.splice(insertAtIndex, 0, taskToTransfer);
-      }
-
-      setTasks(copy);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    highlightIndicator(e);
-    setActive(true);
-  };
-
-  const clearHighlights = (els?: HTMLElement[]) => {
-    const indicators = els || getIndicators();
-    indicators.forEach((i) => {
-      i.style.opacity = "0";
-    });
-  };
-
-  const highlightIndicator = (e: React.DragEvent) => {
-    const indicators = getIndicators();
-    clearHighlights(indicators);
-    const el = getNearestIndicator(e, indicators);
-    el.element.style.opacity = "1";
-  };
-
-  const getNearestIndicator = (e: React.DragEvent, indicators: HTMLElement[]) => {
-    const DISTANCE_OFFSET = 50;
-
-    const el = indicators.reduce(
-      (closest, child) => {
-        const box = child.getBoundingClientRect();
-        const offset = e.clientY - (box.top + DISTANCE_OFFSET);
-
-        if (offset < 0 && offset > closest.offset) {
-          return { offset: offset, element: child };
-        } else {
-          return closest;
-        }
-      },
-      {
-        offset: Number.NEGATIVE_INFINITY,
-        element: indicators[indicators.length - 1],
-      }
-    );
-
-    return el;
-  };
-
-  const getIndicators = () => {
-    return Array.from(
-      document.querySelectorAll(
-        `[data-column="${column}"]`
-      ) as unknown as HTMLElement[]
-    );
-  };
-
-  const handleDragLeave = () => {
-    clearHighlights();
-    setActive(false);
-  };
-
-  const filteredTasks = tasks.filter((c) => c.status === column);
-
-  return (
-    <div className="flex-1 min-w-0 h-full flex flex-col mx-2">
-      <div className="mb-3 flex items-center justify-between flex-shrink-0">
-        <h3 className={`font-medium ${headingColor} truncate`}>{title}</h3>
-        <span className="rounded text-sm text-neutral-400 ml-2">
-          {filteredTasks.length}
-        </span>
-      </div>
-      <div
-        onDrop={handleDragEnd}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        className={`flex-1 min-h-0 overflow-y-auto transition-colors ${
-          active ? "bg-neutral-800/50" : "bg-neutral-800/0"
-        }`}
-      >
-        {filteredTasks.map((c) => {
-          return <BugTaskCard key={c.id} {...c} handleDragStart={handleDragStart} />;
-        })}
-        <BugDropIndicator beforeId={null} column={column} />
-        <BugAddCard 
-          column={column} 
-          setTasks={setTasks} 
-          allTasks={tasks}
-          bugId={bugId}
-          projectId={projectId}
-        />
-      </div>
-    </div>
-  );
-};
-
-// Bug-specific Task Card Component
-interface BugTaskCardProps extends Task {
-  handleDragStart: (e: React.DragEvent, task: Task) => void;
-}
-
-const BugTaskCard: React.FC<BugTaskCardProps> = ({ id, title, status, handleDragStart, ...task }) => {
-  return (
-    <>
-      <BugDropIndicator beforeId={id} column={status} />
-      <motion.div
-        layout
-        layoutId={id}
-        draggable="true"
-        onDragStart={(e) => handleDragStart(e as any, { id, title, status, ...task })}
-        className="cursor-grab rounded border border-neutral-700 bg-neutral-800 p-3 active:cursor-grabbing"
-      >
-        <p className="text-sm text-neutral-100">{title}</p>
-      </motion.div>
-    </>
-  );
-};
-
-// Bug-specific Drop Indicator Component
-interface BugDropIndicatorProps {
-  beforeId: string | null;
-  column: string;
-}
-
-const BugDropIndicator: React.FC<BugDropIndicatorProps> = ({ beforeId, column }) => {
-  return (
-    <div
-      data-before={beforeId || "-1"}
-      data-column={column}
-      className="my-0.5 h-0.5 w-full bg-violet-400 opacity-0"
-    />
-  );
-};
-
-// Bug-specific Burn Barrel Component
-interface BugBurnBarrelProps {
-  setTasks: (tasks: Task[]) => void;
-  allTasks: Task[];
-}
-
-const BugBurnBarrel: React.FC<BugBurnBarrelProps> = ({
-  setTasks,
-  allTasks,
-}) => {
-  const [active, setActive] = useState(false);
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setActive(true);
-  };
-
-  const handleDragLeave = () => {
-    setActive(false);
-  };
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    const taskId = e.dataTransfer.getData("taskId");
-
-    setTasks(allTasks.filter((c: Task) => c.id !== taskId));
-
-    setActive(false);
-  };
-        
-  return (
-    <div
-      onDrop={handleDragEnd}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      className={`mt-10 grid h-32 w-32 shrink-0 place-content-center rounded border text-2xl ${
-        active
-          ? "border-red-800 bg-red-800/20 text-red-500"
-          : "border-neutral-500 bg-neutral-500/20 text-neutral-500"
-      }`}
-    >
-      {active ? <FaFire className="animate-bounce" /> : <FiTrash />}
-    </div>
-  );
-};
-
-// Bug-specific Add Card Component
-interface BugAddCardProps {
-  column: Task['status'];
-  setTasks: (tasks: Task[]) => void;
-  allTasks: Task[];
-  bugId: string;
-  projectId: string;
-}
-
-const BugAddCard: React.FC<BugAddCardProps> = ({ column, setTasks, allTasks, bugId, projectId }) => {
-  const [text, setText] = useState("");
-  const [adding, setAdding] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    if (!text.trim().length) return;
-
-    const newTask: Task = {
-      id: Math.random().toString(),
-      projectId: projectId,
-      title: text.trim(),
-      description: '',
-      status: column,
-      priority: 'medium',
-      bugId: bugId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    setTasks([...allTasks, newTask]);
-
-    setAdding(false);
-    setText("");
-  };
-
-  return (
-    <>
-      {adding ? (
-        <motion.form layout onSubmit={handleSubmit}>
-          <textarea
-            onChange={(e) => setText(e.target.value)}
-            autoFocus
-            placeholder="Add new task..."
-            className="w-full rounded border border-violet-400 bg-violet-400/20 p-3 text-sm text-neutral-50 placeholder-violet-300 focus:outline-0"
-          />
-          <div className="mt-1.5 flex items-center justify-end gap-1.5">
-            <button
-              type="button"
-              onClick={() => setAdding(false)}
-              className="px-3 py-1.5 text-xs text-neutral-400 transition-colors hover:text-neutral-50"
-            >
-              Close
-            </button>
-            <button
-              type="submit"
-              className="flex items-center gap-1.5 rounded bg-neutral-50 px-3 py-1.5 text-xs text-neutral-950 transition-colors hover:bg-neutral-300"
-            >
-              <span>Add</span>
-              <FiPlus />
-            </button>
-          </div>
-        </motion.form>
-      ) : (
-        <motion.button
-          layout
-          onClick={() => setAdding(true)}
-          className="flex w-full items-center gap-1.5 px-3 py-1.5 text-xs text-neutral-400 transition-colors hover:text-neutral-50"
-        >
-          <span>Add card</span>
-          <FiPlus />
-        </motion.button>
-      )}
-    </>
-  );
-};

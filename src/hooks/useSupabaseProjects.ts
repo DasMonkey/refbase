@@ -4,7 +4,7 @@ import { useAuth } from './useAuth';
 import { Project, Document, Task, Bug, Feature, FeatureData, FeatureFile, CalendarEvent, FileItem, ChatMessage } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
-// Note: Removed global state to fix state synchronization issues
+// Note: Removed event system that was causing race conditions
 
 export const useSupabaseProjects = () => {
   const { user } = useAuth();
@@ -20,6 +20,9 @@ export const useSupabaseProjects = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
+
+  // Note: Removed custom event system that was causing race conditions
+  // Will implement proper CRDT-based collaboration instead
 
   // Load user's data from Supabase
   useEffect(() => {
@@ -168,6 +171,7 @@ export const useSupabaseProjects = () => {
       const formattedFeatures = data.map(f => ({
         ...f,
         projectId: f.project_id,
+        status: f.status || 'planned', // Default to 'planned' for features without status
         createdAt: new Date(f.created_at),
         updatedAt: new Date(f.updated_at)
       }));
@@ -225,6 +229,7 @@ export const useSupabaseProjects = () => {
       const formattedBugs = data.map(b => ({
         ...b,
         projectId: b.project_id,
+        featureId: b.feature_id,
         createdAt: new Date(b.created_at),
         updatedAt: new Date(b.updated_at)
       }));
@@ -505,6 +510,7 @@ export const useSupabaseProjects = () => {
       title,
       content: '',
       type,
+      status: 'planned', // Default status for new features
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -518,7 +524,8 @@ export const useSupabaseProjects = () => {
           project_id: projectId,
           title: newFeature.title,
           content: newFeature.content,
-          type: newFeature.type
+          type: newFeature.type,
+          status: newFeature.status
         }]);
 
       if (error) {
@@ -759,8 +766,8 @@ export const useSupabaseProjects = () => {
     };
 
     try {
-      // Try to save to Supabase
-      const { error } = await supabase
+      // Try to save to Supabase (excluding feature_id and bug_id as they don't exist in current schema)
+      const { data, error } = await supabase
         .from('tasks')
         .insert([{
           id: newTask.id,
@@ -768,16 +775,17 @@ export const useSupabaseProjects = () => {
           title: newTask.title,
           description: newTask.description,
           status: newTask.status,
-          priority: newTask.priority,
-          feature_id: featureId,
-          bug_id: bugId
-        }]);
+          priority: newTask.priority
+        }])
+        .select();
 
       if (error) {
         console.error('Error creating task in Supabase:', error);
+        throw error;
       }
     } catch (error) {
       console.error('Error creating task:', error);
+      throw error;
     }
 
     // Always update local state
@@ -842,7 +850,7 @@ export const useSupabaseProjects = () => {
     saveToLocalStorage('tasks', updated);
   };
 
-  const createBug = async (projectId: string, title: string, type: Bug['type']) => {
+  const createBug = async (projectId: string, title: string, type: Bug['type'], featureId?: string | null) => {
     if (!user) throw new Error('User not authenticated');
 
     const newBug: Bug = {
@@ -855,12 +863,13 @@ export const useSupabaseProjects = () => {
       status: 'open',
       severity: 'medium',
       attachments: [],
+      featureId: featureId || undefined,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
     try {
-      // Try to save to Supabase (only using existing columns)
+      // Try to save to Supabase with all required fields
       const { error } = await supabase
         .from('bugs')
         .insert([{
@@ -868,22 +877,33 @@ export const useSupabaseProjects = () => {
           project_id: projectId,
           title: newBug.title,
           description: newBug.description,
+          content: newBug.content,
+          type: newBug.type,
+          language: newBug.language,
           status: newBug.status,
           severity: newBug.severity,
-          attachments: newBug.attachments
+          assignee: newBug.assignee,
+          attachments: newBug.attachments,
+          feature_id: featureId,
+          created_at: newBug.createdAt.toISOString(),
+          updated_at: newBug.updatedAt.toISOString()
         }]);
 
       if (error) {
         console.error('Error creating bug in Supabase:', error);
+        console.error('Error details:', error);
       }
     } catch (error) {
       console.error('Error creating bug:', error);
     }
 
-    // Always update local state
+    // Always update local state first
     const updated = [...bugs, newBug];
     setBugs(updated);
     saveToLocalStorage('bugs', updated);
+    
+    // Note: Removed event emission - will use proper collaboration instead
+    
     return newBug;
   };
 
@@ -920,6 +940,8 @@ export const useSupabaseProjects = () => {
     );
     setBugs(updated);
     saveToLocalStorage('bugs', updated);
+    
+    // Note: Removed event emission - will use proper collaboration instead
   };
 
   const deleteBug = async (id: string) => {
@@ -943,6 +965,8 @@ export const useSupabaseProjects = () => {
     const updated = bugs.filter(b => b.id !== id);
     setBugs(updated);
     saveToLocalStorage('bugs', updated);
+    
+    // Note: Removed event emission - will use proper collaboration instead
   };
 
   const addMessage = async (projectId: string, author: string, content: string) => {
@@ -981,6 +1005,29 @@ export const useSupabaseProjects = () => {
     return newMessage;
   };
 
+  // Simple refresh - just reload all data when needed
+  const refreshData = async () => {
+    if (!user) return;
+    setDataLoaded(false);
+    await loadAllData();
+  };
+
+  // Periodic background refresh to keep data in sync (only when idle)
+  // TEMPORARILY DISABLED - investigating auto-refresh issue
+  // useEffect(() => {
+  //   if (!user || !dataLoaded) return;
+
+  //   const intervalId = setInterval(() => {
+  //     // Only refresh if user hasn't interacted recently
+  //     const lastActivity = Date.now() - (window.lastUserActivity || 0);
+  //     if (lastActivity > 60000) { // 1 minute of inactivity
+  //       refreshData();
+  //     }
+  //   }, 30000); // Check every 30 seconds
+
+  //   return () => clearInterval(intervalId);
+  // }, [user, dataLoaded]);
+
   return {
     projects,
     documents,
@@ -1012,5 +1059,6 @@ export const useSupabaseProjects = () => {
     updateBug,
     deleteBug,
     addMessage,
+    refreshData,
   };
 };

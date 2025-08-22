@@ -25,6 +25,27 @@ function App() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAuthPage, setShowAuthPage] = useState(false);
 
+  // Track user activity for background sync
+  useEffect(() => {
+    const updateActivity = () => {
+      (window as any).lastUserActivity = Date.now();
+    };
+
+    // Track various user interactions
+    window.addEventListener('mousedown', updateActivity);
+    window.addEventListener('keydown', updateActivity);
+    window.addEventListener('scroll', updateActivity);
+    
+    // Initialize
+    updateActivity();
+
+    return () => {
+      window.removeEventListener('mousedown', updateActivity);
+      window.removeEventListener('keydown', updateActivity);
+      window.removeEventListener('scroll', updateActivity);
+    };
+  }, []);
+
   // Save sidebar collapsed state to localStorage
   useEffect(() => {
     localStorage.setItem('sidebarCollapsed', JSON.stringify(sidebarCollapsed));

@@ -25,6 +25,7 @@ export interface Feature {
   title: string;
   content: string;
   type: 'user-story' | 'enhancement' | 'new-feature' | 'integration' | 'performance' | 'custom';
+  status: 'planned' | 'in-progress' | 'implemented' | 'testing';
   language?: string; // For syntax highlighting
   createdAt: Date;
   updatedAt: Date;
@@ -87,6 +88,7 @@ export interface Bug {
   severity: 'low' | 'medium' | 'high' | 'critical';
   assignee?: string;
   attachments: string[];
+  featureId?: string; // Link to related feature
   createdAt: Date;
   updatedAt: Date;
 }
