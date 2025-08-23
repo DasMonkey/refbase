@@ -151,7 +151,7 @@ const Column = ({
   const filteredTasks = tasks.filter((c) => c.status === column);
 
   return (
-    <div className="flex-1 min-w-60 h-full flex flex-col mx-2">
+    <div className="flex-1 min-w-32 sm:min-w-40 md:min-w-60 h-full flex flex-col mx-1 sm:mx-2">
       <div className="mb-3 flex items-center justify-between flex-shrink-0">
         <h3 className={`font-medium ${headingColor} truncate`}>{title}</h3>
         <span className="rounded text-sm text-neutral-400 ml-2">
@@ -162,7 +162,7 @@ const Column = ({
         onDrop={handleDragEnd}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        className={`flex-1 min-h-0 overflow-y-auto transition-colors space-y-3 ${
+        className={`flex-1 min-h-0 overflow-y-auto transition-colors space-y-3 dark-scrollbar ${
           active ? "bg-neutral-800/50" : "bg-neutral-800/0"
         }`}
       >
@@ -381,7 +381,7 @@ const BurnBarrel = ({
       onDrop={handleDragEnd}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
-      className={`mt-10 grid h-32 w-32 shrink-0 place-content-center rounded border text-2xl ${
+      className={`mt-4 sm:mt-6 md:mt-10 grid h-16 w-16 sm:h-24 sm:w-24 md:h-32 md:w-32 shrink-0 place-content-center rounded border text-lg sm:text-xl md:text-2xl ${
         active
           ? "border-red-800 bg-red-800/20 text-red-500"
           : "border-neutral-500 bg-neutral-500/20 text-neutral-500"
@@ -475,11 +475,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   return (
     <div className="h-full w-full text-neutral-50" style={{ backgroundColor: '#0a0a0a' }}>
       <div 
-        className="flex h-full w-full gap-4 overflow-auto p-4 md:p-8 lg:p-12 scrollbar-hide" 
-        style={{ 
-          scrollbarWidth: 'none', 
-          msOverflowStyle: 'none'
-        }}
+        className="flex h-full w-full gap-1 sm:gap-2 md:gap-4 overflow-auto p-2 sm:p-4 md:p-6 dark-scrollbar"
       >
         {statusColumns.map((column) => (
           <Column

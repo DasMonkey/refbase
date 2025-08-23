@@ -97,10 +97,12 @@ export interface CalendarEvent {
   id: string;
   projectId: string;
   title: string;
-  description: string;
-  start: Date;
-  end: Date;
-  type: 'task' | 'bug' | 'milestone' | 'meeting';
+  description?: string;
+  date: Date;
+  startTime: string;
+  endTime: string;
+  type: 'meeting' | 'task' | 'milestone' | 'bug';
+  attendees?: string[];
 }
 
 export interface FileItem {
