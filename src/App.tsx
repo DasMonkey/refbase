@@ -6,6 +6,8 @@ import { Sidebar } from './components/Sidebar';
 import { ProjectWorkspace } from './components/ProjectWorkspace';
 import { CreateProjectModal } from './components/CreateProjectModal';
 import { ConnectionStatus } from './components/ConnectionStatus';
+import { ChatBubble } from './components/ChatBubble';
+import { ChatBubbleErrorBoundary } from './components/ChatBubbleErrorBoundary';
 import { useAuth } from './hooks/useAuth';
 import { useSupabaseProjects } from './hooks/useSupabaseProjects';
 import { useTheme } from './contexts/ThemeContext';
@@ -24,6 +26,31 @@ function App() {
   });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAuthPage, setShowAuthPage] = useState(false);
+  
+  // AI Chat state management
+  const [aiChatOpen, setAiChatOpen] = useState<boolean>(false);
+  const [forceShowAiChat, setForceShowAiChat] = useState<boolean>(false);
+
+  // Handle chat bubble click - toggle functionality
+  const handleChatBubbleClick = React.useCallback(() => {
+    const newState = !aiChatOpen;
+    setForceShowAiChat(newState);
+    setAiChatOpen(newState);
+  }, [aiChatOpen]);
+
+  // Handle AI chat state changes from ProjectWorkspace - must be defined before any conditional returns
+  const handleAiChatStateChange = React.useCallback((isOpen: boolean) => {
+    setAiChatOpen(isOpen);
+    if (!isOpen) {
+      setForceShowAiChat(false);
+    }
+  }, []);
+
+  // Handle force show AI chat changes - must be defined before any conditional returns
+  const handleForceShowAiChatChange = React.useCallback((show: boolean) => {
+    setForceShowAiChat(show);
+    setAiChatOpen(show);
+  }, []);
 
   // Track user activity for background sync
   useEffect(() => {
@@ -265,7 +292,12 @@ function App() {
             transition={{ duration: 0.3 }}
             className="flex-1 flex flex-col overflow-hidden"
           >
-            <ProjectWorkspace project={activeProject} />
+            <ProjectWorkspace 
+              project={activeProject}
+              onAiChatStateChange={handleAiChatStateChange}
+              forceShowAiChat={forceShowAiChat}
+              onForceShowAiChatChange={handleForceShowAiChatChange}
+            />
           </motion.div>
         ) : (
           <motion.div
@@ -289,6 +321,16 @@ function App() {
 
       {/* Connection Status */}
       <ConnectionStatus />
+
+      {/* Chat Bubble - Only show when user is authenticated and has projects */}
+      {isAuthenticated && (
+        <ChatBubbleErrorBoundary>
+          <ChatBubble
+            onClick={handleChatBubbleClick}
+            isAiChatOpen={aiChatOpen}
+          />
+        </ChatBubbleErrorBoundary>
+      )}
     </div>
   );
 }

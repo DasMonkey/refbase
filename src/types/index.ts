@@ -4,6 +4,7 @@ export interface Project {
   description: string;
   icon: string;
   color: string;
+  status?: 'planned' | 'in-progress' | 'implemented' | 'testing';
   createdAt: Date;
   updatedAt: Date;
 }

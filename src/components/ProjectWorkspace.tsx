@@ -27,6 +27,9 @@ import { PromptInputBox } from './ui/ai-prompt-box';
 
 interface ProjectWorkspaceProps {
   project: Project;
+  onAiChatStateChange?: (isOpen: boolean) => void;
+  forceShowAiChat?: boolean;
+  onForceShowAiChatChange?: (show: boolean) => void;
 }
 
 const tabs = [
@@ -40,7 +43,12 @@ const tabs = [
   { id: 'chat' as TabType, label: 'Chat', icon: MessageCircle, shortcut: '8' },
 ];
 
-export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) => {
+export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ 
+  project,
+  onAiChatStateChange,
+  forceShowAiChat: externalForceShowAiChat = false,
+  onForceShowAiChatChange
+}) => {
   // Initialize activeTab from localStorage or default to 'dashboard'
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     const saved = localStorage.getItem(`activeTab_${project.id}`);
@@ -59,9 +67,10 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) =
   }, [activeTab, project.id]);
   const [isMac, setIsMac] = useState(false);
   const [aiChatVisible, setAiChatVisible] = useState(true);
-  const [mouseY, setMouseY] = useState(0);
-  const [windowHeight, setWindowHeight] = useState(0);
-  const [forceShowAiChat, setForceShowAiChat] = useState(false);
+  const [internalForceShowAiChat, setInternalForceShowAiChat] = useState(false);
+  
+  // Use external forceShowAiChat if provided, otherwise use internal state
+  const forceShowAiChat = externalForceShowAiChat || internalForceShowAiChat;
 
   // Detect operating system
   useEffect(() => {
@@ -73,33 +82,15 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) =
     localStorage.setItem(`activeTab_${project.id}`, activeTab);
   }, [activeTab, project.id]);
 
-  // Track mouse position and window height for AI chat auto-hide
+
+
+  // Calculate if AI chat should be visible - now only based on forceShowAiChat
+  const shouldShowAiChat = forceShowAiChat;
+
+  // Notify parent component of AI chat state changes
   useEffect(() => {
-    const updateWindowHeight = () => setWindowHeight(window.innerHeight);
-    const handleMouseMove = (e: MouseEvent) => {
-      setMouseY(e.clientY);
-      
-      // Reset force-show when mouse moves away from bottom 30% of screen
-      if (forceShowAiChat && windowHeight > 0 && e.clientY <= windowHeight * 0.7) {
-        setForceShowAiChat(false);
-      }
-    };
-
-    // Set initial window height
-    updateWindowHeight();
-
-    // Add event listeners
-    window.addEventListener('resize', updateWindowHeight);
-    window.addEventListener('mousemove', handleMouseMove);
-
-    return () => {
-      window.removeEventListener('resize', updateWindowHeight);
-      window.removeEventListener('mousemove', handleMouseMove);
-    };
-  }, [forceShowAiChat, windowHeight]);
-
-  // Calculate if AI chat should be visible based on mouse position or keyboard shortcut
-  const shouldShowAiChat = forceShowAiChat || (windowHeight > 0 && mouseY > windowHeight * 0.9);
+    onAiChatStateChange?.(shouldShowAiChat);
+  }, [shouldShowAiChat, onAiChatStateChange]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -113,7 +104,11 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) =
         // Handle AI chat shortcut (Ctrl+0 / Cmd+0)
         if (pressedNumber === '0') {
           event.preventDefault();
-          setForceShowAiChat(true);
+          if (onForceShowAiChatChange) {
+            onForceShowAiChatChange(true);
+          } else {
+            setInternalForceShowAiChat(true);
+          }
           // Focus will be handled by the PromptInputBox component
           return;
         }
@@ -129,13 +124,17 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project }) =
       // Hide AI chat when Escape is pressed (if it was force-shown)
       if (event.key === 'Escape' && forceShowAiChat) {
         event.preventDefault();
-        setForceShowAiChat(false);
+        if (onForceShowAiChatChange) {
+          onForceShowAiChatChange(false);
+        } else {
+          setInternalForceShowAiChat(false);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMac, forceShowAiChat]);
+  }, [isMac, forceShowAiChat, onForceShowAiChatChange]);
 
   const renderTabContent = () => {
     return (

@@ -553,7 +553,8 @@ export const useSupabaseProjects = () => {
           title: updates.title,
           content: updates.content,
           type: updates.type,
-          language: updates.language
+          language: updates.language,
+          status: updates.status
         })
         .eq('id', id);
 
@@ -636,6 +637,7 @@ export const useSupabaseProjects = () => {
 
     const newFile: FeatureFile = {
       ...newData,
+      dataType: 'info_file' as const,
       type
     };
 

@@ -7,7 +7,8 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.blocknotejs.org)",
       "mcp__context7__get-library-docs",
-      "mcp__context7__resolve-library-id"
+      "mcp__context7__resolve-library-id",
+      "WebFetch(domain:stackoverflow.com)"
     ],
     "deny": [],
     "ask": []

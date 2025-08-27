@@ -100,17 +100,6 @@ const CopyButton: React.FC<{ code: string; isDark: boolean }> = ({ code, isDark 
       >
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
-      {copied && (
-        <div 
-          className={`absolute top-12 right-2 px-2 py-1 text-xs rounded shadow-lg z-20 ${
-            isDark 
-              ? 'bg-gray-800 text-green-400 border border-gray-700' 
-              : 'bg-white text-green-600 border border-gray-200'
-          }`}
-        >
-          Copied!
-        </div>
-      )}
     </div>
   );
 };
@@ -135,6 +124,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  const previewOnlyRef = useRef<HTMLDivElement>(null);
   const hasAutoDetected = useRef(false);
   
   // Image upload functionality
@@ -350,11 +340,24 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
     }
   };
 
-  // Calculate line numbers for textarea
-  const getLineNumbers = (text: string) => {
-    const lines = (text || '').split('\n');
-    return Array.from({ length: lines.length }, (_, i) => i + 1);
+  const handlePreviewOnlyScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    // Update scrollTop for line number synchronization in preview-only mode
+    const scrollTop = e.currentTarget.scrollTop;
+    setScrollTop(scrollTop);
   };
+
+  // Calculate line numbers for textarea (only count actual line breaks, not word wraps)
+  const getLineNumbers = (text: string) => {
+    if (!text) return [1];
+    // Only count actual \n characters, not visual wraps
+    const actualLines = text.split('\n');
+    console.log('Actual lines count:', actualLines.length, 'Lines:', actualLines);
+    return Array.from({ length: actualLines.length }, (_, i) => i + 1);
+  };
+
+  // Check if content has diff formatting to hide built-in line numbers
+  // More specific pattern: line number + space + +/- + space + content (like "123 + code")
+  const hasDiffFormatting = content.split('\n').some(line => line.match(/^\s*\d+\s+[+-]\s+.+/));
 
   // Memoized render content for optimal performance
   const renderContent = useMemo(() => {
@@ -383,8 +386,16 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
         const match = /language-(\w+)/.exec(className);
         const codeLanguage = match ? match[1] : 'text';
         
+        const codeContent = String(children);
+        const lines = codeContent.split('\n');
+        
+        // Check if this is copied code with line numbers and diff markers
+        // Format: "69 + code" or "70 - code" (line number, space, +/-, space, content)
+        const hasCopiedDiffLines = lines.some(line => line.match(/^\s*\d+\s+[+-]\s+.+/));
+        
+        // Regular code block - keep it simple
         return (
-          <div className="my-4">
+          <div className="my-0">
             <SyntaxHighlighter
               style={isDark ? oneDark : oneLight}
               language={codeLanguage}
@@ -395,10 +406,55 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
                 borderRadius: '6px',
                 fontSize: '14px',
                 lineHeight: '1.5',
-                padding: '1rem'
+                paddingLeft: '1rem',
+                paddingRight: '1rem',
+                paddingTop: '1rem',
+                paddingBottom: '1rem',
+                width: 'fit-content',
+                maxWidth: '100%',
+                overflow: 'visible'
+              }}
+              PreTag={({ children, ...props }: { children: React.ReactNode; style?: React.CSSProperties; [key: string]: unknown }) => (
+                <div 
+                  {...props} 
+                  className="relative"
+                  style={{
+                    ...props.style,
+                    width: 'fit-content',
+                    whiteSpace: 'pre',
+                    overflow: 'visible'
+                  }}
+                >
+                  <CopyButton code={codeContent} isDark={isDark} />
+                  {children}
+                </div>
+              )}
+            >
+              {codeContent}
+            </SyntaxHighlighter>
+          </div>
+        );
+
+        // Regular code block without diff formatting
+        return (
+          <div className="my-0">
+            <SyntaxHighlighter
+              style={isDark ? oneDark : oneLight}
+              language={codeLanguage}
+              showLineNumbers={false}
+              wrapLongLines={false}
+              customStyle={{
+                margin: 0,
+                borderRadius: '6px',
+                fontSize: '14px',
+                lineHeight: '1.5',
+                paddingLeft: '1rem',
+                paddingRight: '1rem',
+                paddingTop: 0,
+                paddingBottom: 0
               }}
             >
-              {String(children).replace(/\n$/, '')}
+              {codeContent}
             </SyntaxHighlighter>
           </div>
         );
@@ -432,64 +488,146 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
 
         // Extract the actual code content
         const codeContent = extractTextContent(children);
+        const lines = codeContent.trim().split('\n');
         
+        // Check if this is copied code with line numbers and diff markers
+        // Format: "69 + code" or "70 - code" (line number, space, +/-, space, content)
+        const hasCopiedDiffLines = lines.some(line => line.match(/^\s*\d+\s+[+-]\s+.+/));
+        
+        // Regular code block - keep it simple
         return (
-          <div className="my-4 relative">
-            <CopyButton code={codeContent.trim()} isDark={isDark} />
-            <div className={`overflow-auto rounded-md ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}>
-              <SyntaxHighlighter
-                style={isDark ? oneDark : oneLight}
-                language="javascript"
-                showLineNumbers={false}
-                wrapLongLines={false}
-                customStyle={{
-                  margin: 0,
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  lineHeight: '1.5',
-                  padding: '1rem',
-                  minWidth: '100%',
-                  width: 'fit-content',
+          <div className="my-0">
+            <SyntaxHighlighter
+              style={isDark ? oneDark : oneLight}
+              language="javascript"
+              showLineNumbers={false}
+              wrapLongLines={false}
+              customStyle={{
+                margin: 0,
+                borderRadius: '6px',
+                fontSize: '14px',
+                lineHeight: '1.5',
+                paddingLeft: '1rem',
+                paddingRight: '1rem',
+                paddingTop: '1rem',
+                paddingBottom: '1rem',
+                width: 'fit-content',
+                maxWidth: '100%',
+                display: 'block',
+                background: isDark ? '#0d1117' : '#f6f8fa',
+                overflow: 'visible'
+              }}
+              codeTagProps={{
+                style: {
                   display: 'block',
-                  background: isDark ? '#0d1117' : '#f6f8fa'
-                }}
-                codeTagProps={{
-                  style: {
-                    display: 'block',
-                    width: 'max-content',
-                    minWidth: '100%',
-                    background: 'inherit'
-                  }
-                }}
-                useInlineStyles={true}
-                PreTag={({ children, ...props }: { children: React.ReactNode; style?: React.CSSProperties; [key: string]: unknown }) => (
-                  <div 
-                    {...props} 
-                    style={{
-                      ...props.style,
-                      width: 'max-content',
-                      minWidth: '100%',
-                      background: isDark ? '#0d1117' : '#f6f8fa',
-                      borderRadius: '6px'
-                    }}
-                  >
-                    {children}
-                  </div>
-                )}
-              >
-                {codeContent.trim()}
-              </SyntaxHighlighter>
-            </div>
+                  width: 'fit-content',
+                  background: 'inherit',
+                  overflow: 'visible'
+                }
+              }}
+              useInlineStyles={true}
+              PreTag={({ children, ...props }: { children: React.ReactNode; style?: React.CSSProperties; [key: string]: unknown }) => (
+                <div 
+                  {...props} 
+                  className="relative"
+                  style={{
+                    ...props.style,
+                    width: 'fit-content',
+                    background: isDark ? '#0d1117' : '#f6f8fa',
+                    whiteSpace: 'pre',
+                    overflow: 'visible'
+                  }}
+                >
+                  <CopyButton code={codeContent} isDark={isDark} />
+                  {children}
+                </div>
+              )}
+            >
+              {codeContent}
+            </SyntaxHighlighter>
+          </div>
+        );
+        
+        // Regular code block without diff formatting
+        return (
+          <div className="my-0">
+            <SyntaxHighlighter
+              style={isDark ? oneDark : oneLight}
+              language="javascript"
+              showLineNumbers={false}
+              wrapLongLines={false}
+              customStyle={{
+                margin: 0,
+                borderRadius: '6px',
+                fontSize: '14px',
+                lineHeight: '1.5',
+                paddingLeft: '1rem',
+                paddingRight: '1rem',
+                paddingTop: '1rem',
+                paddingBottom: '1rem',
+                width: 'fit-content',
+                maxWidth: '100%',
+                display: 'block',
+                background: isDark ? '#0d1117' : '#f6f8fa',
+                overflow: 'visible'
+              }}
+              codeTagProps={{
+                style: {
+                  display: 'block',
+                  width: 'fit-content',
+                  background: 'inherit',
+                  overflow: 'visible'
+                }
+              }}
+              useInlineStyles={true}
+              PreTag={({ children, ...props }: { children: React.ReactNode; style?: React.CSSProperties; [key: string]: unknown }) => (
+                <div 
+                  {...props} 
+                  className="relative"
+                  style={{
+                    ...props.style,
+                    width: 'fit-content',
+                    background: isDark ? '#0d1117' : '#f6f8fa',
+                    borderRadius: '6px',
+                    overflow: 'visible'
+                  }}
+                >
+                  <CopyButton code={codeContent.trim()} isDark={isDark} />
+                  {children}
+                </div>
+              )}
+            >
+              {codeContent.trim()}
+            </SyntaxHighlighter>
           </div>
         );
       };
 
-      // Sanitize content to escape problematic XML-like tags
+      // Sanitize content to escape problematic XML-like tags and handle line breaks
       const sanitizeContent = (text: string) => {
         if (!text) return '*No content*';
         
+        // Split by lines to handle each line individually
+        const lines = text.split('\n');
+        let processedText = '';
+        
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          
+          if (line.trim() === '') {
+            // Empty line - add a non-breaking space to preserve it
+            processedText += '&nbsp;\n\n'; // Non-breaking space + double newline for markdown paragraph
+          } else {
+            // Non-empty line - add with line break
+            processedText += line;
+            if (i < lines.length - 1) {
+              processedText += '  \n'; // Two spaces + newline for markdown line break
+            }
+          }
+        }
+        
         // Escape common problematic tags that React might interpret as components
-        return text
+        return processedText
           .replace(/<([a-zA-Z]+[a-zA-Z0-9]*)\b([^>]*)>/g, '&lt;$1$2&gt;')  // Opening tags
           .replace(/<\/([a-zA-Z]+[a-zA-Z0-9]*)>/g, '&lt;/$1&gt;')           // Closing tags
           .replace(/<([a-zA-Z]+[a-zA-Z0-9]*)\s*\/>/g, '&lt;$1 /&gt;');      // Self-closing tags
@@ -526,19 +664,26 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
                     />
                   )
                 },
-                h1: { props: { style: { color: isDark ? '#ffffff' : '#000000', fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '1rem' } } },
-                h2: { props: { style: { color: isDark ? '#ffffff' : '#000000', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.75rem' } } },
-                h3: { props: { style: { color: isDark ? '#ffffff' : '#000000', fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '0.5rem' } } },
-                p: { props: { style: { marginBottom: '1rem' } } },
-                a: { props: { style: { color: isDark ? '#60a5fa' : '#2563eb' } } },
+                h1: { props: { style: { color: isDark ? '#ffffff' : '#000000', fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '0', lineHeight: '1.5rem', minHeight: '1.5rem' } } },
+                h2: { props: { style: { color: isDark ? '#ffffff' : '#000000', fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0', lineHeight: '1.5rem', minHeight: '1.5rem' } } },
+                h3: { props: { style: { color: isDark ? '#ffffff' : '#000000', fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '0', lineHeight: '1.5rem', minHeight: '1.5rem' } } },
+                p: { props: { style: { marginBottom: '0', lineHeight: '1.5rem', minHeight: '1.5rem' } } },
+                a: { props: { style: { color: isDark ? '#60a5fa' : '#2563eb', lineHeight: '1.5rem' } } },
+                div: { props: { style: { lineHeight: '1.5rem', minHeight: '1.5rem' } } },
+                span: { props: { style: { lineHeight: '1.5rem' } } },
+                li: { props: { style: { lineHeight: '1.5rem', minHeight: '1.5rem', marginBottom: '0' } } },
+                ul: { props: { style: { marginBottom: '0', marginTop: '0' } } },
+                ol: { props: { style: { marginBottom: '0', marginTop: '0' } } },
                 blockquote: { 
                   props: { 
                     style: { 
                       borderLeft: `4px solid ${isDark ? '#374151' : '#e5e7eb'}`,
-                      paddingLeft: '1rem',
-                      margin: '1rem 0',
+                      paddingLeft: hasDiffFormatting ? '1rem' : '70px',
+                      margin: '0',
                       fontStyle: 'italic',
-                      color: isDark ? '#d1d5db' : '#6b7280'
+                      color: isDark ? '#d1d5db' : '#6b7280',
+                      lineHeight: '1.5rem',
+                      minHeight: '1.5rem'
                     } 
                   } 
                 }
@@ -599,6 +744,174 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
   }, [content, language, isDark]);
 
   const currentLanguage = supportedLanguages.find(lang => lang.id === language);
+
+  // Universal Editor Renderer - ONE editor that works everywhere
+  const renderUniversalEditor = ({ mode, width }: { mode: 'editor' | 'preview'; width: string }) => {
+    if (mode === 'editor') {
+      // Universal Editor Mode
+      return (
+        <div className="h-full flex">
+          {/* Line Numbers - Always show for all file types */}
+          <div 
+            className={`w-12 flex-shrink-0 overflow-hidden ${isDark ? 'bg-gray-900 text-gray-500' : 'bg-gray-50 text-gray-400'}`}
+            style={{
+              borderRight: `1px solid ${isDark ? '#374151' : '#d1d5db'}`,
+              fontSize: '12px',
+              fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+            }}
+          >
+            <div
+              className="select-none"
+              style={{
+                transform: `translateY(-${scrollTop}px)`,
+                paddingTop: '1rem',
+                paddingBottom: '1rem'
+              }}
+            >
+              {content.split('\n').map((_, index) => (
+                <div
+                  key={index}
+                  className="text-right pr-2"
+                  style={{
+                    minHeight: '1.5rem',
+                    lineHeight: '1.5rem'
+                  }}
+                >
+                  {index + 1}
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Editor Textarea - Universal for all file types */}
+          <div className="flex-1 relative">
+            <textarea
+              ref={editorRef}
+              value={content}
+              onChange={(e) => onChange(e.target.value)}
+              onScroll={handleEditorScroll}
+              onBlur={onBlur}
+              onPaste={handlePaste}
+              placeholder={placeholder}
+              className={`w-full h-full resize-none focus:outline-none text-sm font-mono overflow-auto ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}
+              style={{
+                backgroundColor: isDark ? '#111111' : '#ffffff',
+                color: isDark ? '#e5e5e5' : '#111111',
+                border: 'none',
+                lineHeight: '1.5rem',
+                paddingLeft: hasDiffFormatting ? '1rem' : '1rem',
+                paddingTop: '1rem',
+                paddingRight: '1rem',
+                paddingBottom: '1rem',
+                whiteSpace: 'nowrap',
+                overflowX: 'auto'
+              }}
+            />
+          </div>
+        </div>
+      );
+    } else {
+      // Universal Preview Mode
+      return (
+        <>
+          {/* Line Numbers for Preview */}
+          <div 
+            className={`w-12 flex-shrink-0 overflow-hidden ${isDark ? 'bg-gray-900 text-gray-500' : 'bg-gray-50 text-gray-400'}`}
+            style={{
+              borderRight: `1px solid ${isDark ? '#374151' : '#d1d5db'}`,
+              fontSize: '12px',
+              fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+            }}
+          >
+            <div
+              className="select-none"
+              style={{
+                transform: `translateY(-${scrollTop}px)`,
+                paddingTop: '1rem',
+                paddingBottom: '1rem'
+              }}
+            >
+              {content.split('\n').map((_, index) => (
+                <div
+                  key={index}
+                  className="text-right pr-2"
+                  style={{
+                    minHeight: '1.5rem',
+                    lineHeight: '1.5rem'
+                  }}
+                >
+                  {index + 1}
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Preview Content - Universal for all file types */}
+          <div 
+            ref={viewMode === 'preview' ? previewOnlyRef : previewRef}
+            className={`flex-1 p-4 overflow-auto h-full ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}
+            onScroll={viewMode === 'preview' ? handlePreviewOnlyScroll : handlePreviewScroll}
+            style={{ 
+              backgroundColor: isDark ? '#111111' : '#ffffff',
+              overflowX: 'auto',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <div style={{ display: 'inline-block', minWidth: '100%', whiteSpace: 'normal' }}>
+              {language === 'markdown' ? renderContent : (
+                <div className={`overflow-auto h-full relative ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}>
+                  <CopyButton code={content || '// No content'} isDark={isDark} />
+                  <SyntaxHighlighter
+                    language={language}
+                    style={isDark ? oneDark : oneLight}
+                    customStyle={{
+                      margin: 0,
+                      paddingLeft: '0',
+                      paddingRight: '0', 
+                      paddingTop: 0,
+                      paddingBottom: 0,
+                      fontSize: '14px',
+                      lineHeight: '1.5rem',
+                      fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                      minWidth: '100%',
+                      width: 'fit-content',
+                      display: 'block',
+                      background: isDark ? '#0d1117' : '#f6f8fa'
+                    }}
+                    codeTagProps={{
+                      style: {
+                        display: 'block',
+                        width: 'max-content',
+                        minWidth: '100%',
+                        background: 'inherit'
+                      }
+                    }}
+                    showLineNumbers={false}
+                    wrapLongLines={false}
+                    PreTag={({ children, ...props }: { children: React.ReactNode; style?: React.CSSProperties; [key: string]: unknown }) => (
+                      <div 
+                        {...props} 
+                        style={{
+                          ...props.style,
+                          width: 'max-content',
+                          minWidth: '100%',
+                          background: isDark ? '#0d1117' : '#f6f8fa'
+                        }}
+                      >
+                        {children}
+                      </div>
+                    )}
+                  >
+                    {content || '// No content'}
+                  </SyntaxHighlighter>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      );
+    }
+  };
 
   return (
     <div className="flex flex-col h-full min-w-0">
@@ -732,97 +1045,17 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
         {viewMode === 'split' ? (
           <div className="h-full flex">
             {/* Editor Pane - Fixed 50% */}
-            <div className="w-1/2 flex min-w-0 relative overflow-hidden border-r" style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
-              {/* Line Numbers */}
-              <div 
-                className={`flex flex-col text-right select-none flex-shrink-0 absolute left-0 top-0 z-10 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
-                style={{ 
-                  width: '56px',
-                  backgroundColor: isDark ? '#111111' : '#ffffff',
-                  borderRight: `1px solid ${isDark ? '#374151' : '#d1d5db'}`,
-                  fontSize: '14px',
-                  lineHeight: '1.5rem',
-                  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                  paddingTop: '1rem',
-                  paddingRight: '0.75rem',
-                  paddingBottom: '1rem',
-                  transform: `translate3d(0, -${scrollTop}px, 0)`,
-                  minHeight: `${getLineNumbers(content).length * 24 + 32}px`,
-                  willChange: 'transform'
-                }}
-              >
-                {getLineNumbers(content).map((lineNum) => (
-                  <div key={lineNum} style={{ height: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '0.5rem' }}>
-                    {lineNum}
-                  </div>
-                ))}
-              </div>
-              
-              <textarea
-                ref={editorRef}
-                value={content}
-                onChange={(e) => onChange(e.target.value)}
-                onScroll={handleEditorScroll}
-                onBlur={onBlur}
-                onPaste={handlePaste}
-                placeholder={placeholder}
-                className={`w-full h-full resize-none focus:outline-none text-sm font-mono leading-relaxed overflow-auto ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}
-                style={{
-                  backgroundColor: isDark ? '#111111' : '#ffffff',
-                  color: isDark ? '#e5e5e5' : '#111111',
-                  border: 'none',
-                  lineHeight: '1.5rem',
-                  paddingLeft: '60px',
-                  paddingTop: '1rem',
-                  paddingRight: '1rem',
-                  paddingBottom: '1rem'
-                }}
-              />
+            <div className="w-1/2 min-w-0 overflow-hidden border-r" style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
+              {renderUniversalEditor({ mode: 'editor', width: 'w-full' })}
             </div>
             
             {/* Preview Pane - Fixed 50% */}
-            <div className="w-1/2 flex min-w-0 relative overflow-hidden">
-              {/* Preview Line Numbers */}
-              <div 
-                className={`flex flex-col text-right select-none flex-shrink-0 absolute left-0 top-0 z-10 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
-                style={{ 
-                  width: '56px',
-                  backgroundColor: isDark ? '#111111' : '#ffffff',
-                  borderRight: `1px solid ${isDark ? '#374151' : '#d1d5db'}`,
-                  fontSize: '14px',
-                  lineHeight: '1.5rem',
-                  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                  paddingTop: '1rem',
-                  paddingRight: '0.75rem',
-                  paddingBottom: '1rem',
-                  transform: `translate3d(0, -${scrollTop}px, 0)`,
-                  minHeight: `${getLineNumbers(content).length * 24 + 32}px`,
-                  willChange: 'transform'
-                }}
-              >
-                {getLineNumbers(content).map((lineNum) => (
-                  <div key={lineNum} style={{ height: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '0.5rem' }}>
-                    {lineNum}
-                  </div>
-                ))}
-              </div>
-              
-              {/* Preview Content */}
-              <div 
-                ref={previewRef}
-                className={`w-full p-4 overflow-auto h-full ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}
-                onScroll={handlePreviewScroll}
-                style={{ 
-                  backgroundColor: isDark ? '#111111' : '#ffffff',
-                  paddingLeft: '60px'
-                }}
-              >
-                {renderContent}
-              </div>
+            <div className="w-1/2 flex min-w-0 overflow-hidden">
+              {renderUniversalEditor({ mode: 'preview', width: 'w-full' })}
             </div>
           </div>
         ) : viewMode === 'edit' ? (
-          <div className="h-full flex min-w-0 relative">
+          <div className="h-full w-full relative">
             {/* Drag and Drop Overlay */}
             {isDragging && enableImageUpload && (
               <div className={`absolute inset-0 z-50 flex items-center justify-center border-2 border-dashed ${
@@ -885,56 +1118,11 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
               </div>
             )}
 
-            {/* Line Numbers */}
-            <div 
-              className={`flex flex-col text-right select-none flex-shrink-0 absolute left-0 top-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
-              style={{ 
-                width: '56px',
-                backgroundColor: isDark ? '#111111' : '#ffffff',
-                borderRight: `1px solid ${isDark ? '#374151' : '#d1d5db'}`,
-                fontSize: '14px',
-                lineHeight: '1.5rem',
-                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                paddingTop: '1rem',
-                paddingRight: '0.75rem',
-                paddingBottom: '1rem',
-                transform: `translate3d(0, -${scrollTop}px, 0)`,
-                minHeight: `${getLineNumbers(content).length * 24 + 32}px`,
-                willChange: 'transform'
-              }}
-            >
-              {getLineNumbers(content).map((lineNum) => (
-                <div key={lineNum} style={{ height: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '0.5rem' }}>
-                  {lineNum}
-                </div>
-              ))}
-            </div>
-            
-            {/* Textarea */}
-            <textarea
-              ref={editorRef}
-              value={content}
-              onChange={(e) => onChange(e.target.value)}
-              onScroll={handleEditorScroll}
-              onBlur={onBlur}
-              onPaste={handlePaste}
-              placeholder={placeholder}
-              className={`flex-1 h-full resize-none focus:outline-none text-sm font-mono leading-relaxed min-w-0 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}
-              style={{
-                backgroundColor: isDark ? '#111111' : '#ffffff',
-                color: isDark ? '#e5e5e5' : '#111111',
-                border: 'none',
-                lineHeight: '1.5rem',
-                paddingLeft: '60px',
-                paddingTop: '1rem',
-                paddingRight: '1rem',
-                paddingBottom: '1rem'
-              }}
-            />
+            {renderUniversalEditor({ mode: 'editor', width: 'w-full' })}
           </div>
         ) : (
-          <div className={`h-full p-4 overflow-auto ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}>
-            {renderContent}
+          <div className="h-full flex">
+            {renderUniversalEditor({ mode: 'preview', width: 'w-full' })}
           </div>
         )}
       </div>
