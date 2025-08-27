@@ -1,374 +1,324 @@
-# Implementation Plan - RefBase MCP Server
+# RefBase MCP Server Implementation Plan - Tool-Based Approach
 
-Convert the RefBase MCP Server design into a series of prompts for a code-generation LLM that will implement each step in a test-driven manner. Prioritize best practices, incremental progress, and early testing, ensuring no big jumps in complexity at any stage. Make sure that each prompt builds on the previous prompts, and ends with wiring things together. There should be no hanging or orphaned code that isn't integrated into a previous step. Focus ONLY on tasks that involve writing, modifying, or testing code.
+This implementation plan focuses on building MCP tools that integrate with your existing RefBase webapp, providing AI assistants with explicit tools to save and search conversations, bugs, and features.
 
-## Core Infrastructure Setup
+## Core MCP Tools Implementation
 
-- [ ] 1. Initialize Node.js MCP Server Project Structure
-  - Create package.json with TypeScript, testing, and MCP dependencies
-  - Set up TypeScript configuration with strict mode and proper module resolution
-  - Configure ESLint and Prettier for code quality and consistency
-  - Create basic directory structure: src/, tests/, config/, logs/
-  - Set up Jest testing framework with TypeScript support
-  - Create basic .env configuration template and environment variable handling
-  - _Requirements: 6.1, 6.2_
+### Phase 1: Project Foundation and Basic MCP Server
 
-- [ ] 2. Implement Core Configuration Management
-  - Create ServerConfig interface with all configuration sections (server, database, IDEs, processing, logging, security)
-  - Implement ConfigManager class to load and validate configuration from files and environment variables
-  - Add configuration validation using Zod schemas for type safety
-  - Create configuration loading with environment-specific overrides (development, production)
-  - Write unit tests for configuration loading and validation
-  - Implement configuration hot-reloading for development
-  - _Requirements: 6.1, 6.3, 6.7_
+- [ ] 1. Initialize RefBase MCP Server Project
+  - Create Node.js TypeScript project with MCP dependencies (@modelcontextprotocol/sdk)
+  - Set up project structure: src/, tests/, config/
+  - Configure TypeScript, ESLint, Prettier, and Jest
+  - Create basic .env configuration and environment handling
+  - Set up package.json with scripts for build, test, and development
+  - Create basic README with setup instructions
+  - _Requirements: 10.1, 10.2_
 
-- [ ] 3. Set up Logging and Monitoring Infrastructure
-  - Implement structured logging using Winston with configurable log levels
-  - Create log formatters for development (human-readable) and production (JSON)
-  - Set up log rotation and file management with size and time-based rotation
-  - Implement health check endpoints for monitoring server status
-  - Create metrics collection for connection counts, message processing, and error rates
-  - Add performance monitoring for memory usage and processing times
-  - Write tests for logging functionality and health check endpoints
-  - _Requirements: 10.1, 10.2, 10.7_
+- [ ] 2. Implement Basic MCP Server Infrastructure  
+  - Create MCPServer class with tool registration and discovery
+  - Implement MCP protocol communication using @modelcontextprotocol/sdk
+  - Add tool registration system with JSON schema validation
+  - Create basic error handling and logging infrastructure
+  - Implement server startup and shutdown procedures
+  - Write unit tests for core MCP functionality
+  - _Requirements: 1.1, 1.2, 1.3_
 
-## MCP Protocol Implementation
+- [ ] 3. Build Authentication and RefBase API Integration
+  - Create RefBaseAPIClient class for API communication
+  - Implement token-based authentication with validation
+  - Add user context extraction and management
+  - Create HTTP client with timeout, retry, and error handling
+  - Implement authentication middleware for tool calls
+  - Write tests for authentication and API client
+  - _Requirements: 6.1, 6.2, 7.1, 7.2_
 
-- [ ] 4. Implement MCP Protocol Foundation
-  - [ ] 4.1 Create MCP message types and interfaces
-    - Define MCPMessage interface with all message types (conversation_start, conversation_message, etc.)
-    - Create TypeScript enums for MessageType and validation schemas
-    - Implement message validation using Zod schemas for each message type
-    - Create message serialization and deserialization utilities
-    - Write unit tests for message validation and serialization
-    - _Requirements: 1.7, 1.8_
+### Phase 2: Conversation Management Tools
 
-  - [ ] 4.2 Build Protocol Handler class
-    - Implement ProtocolHandler class with message parsing and validation methods
-    - Add protocol state management for tracking conversation sessions
-    - Create protocol error handling with specific error codes and recovery strategies
-    - Implement message acknowledgment and response generation
-    - Write comprehensive unit tests for protocol handling edge cases
-    - _Requirements: 1.1, 1.7, 7.7_
+- [ ] 4. Implement save_conversation Tool
+  - Create SaveConversationTool class with MCP tool interface
+  - Define JSON schema for conversation data input
+  - Implement conversation data validation and sanitization
+  - Add project context extraction from file paths
+  - Integrate with RefBase API to save conversation
+  - Handle conversation metadata (IDE type, timestamps, etc.)
+  - Write comprehensive tests for conversation saving
+  - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 5. Implement Connection Management System
-  - [ ] 5.1 Create Connection Manager foundation
-    - Implement ConnectionManager class with connection lifecycle management
-    - Create MCPConnection interface and implementation for individual IDE connections
-    - Add connection authentication and authorization handling
-    - Implement connection health monitoring with heartbeat mechanism
-    - Write unit tests for connection management and lifecycle
-    - _Requirements: 1.1, 1.3, 1.6_
+- [ ] 5. Implement search_conversations Tool
+  - Create SearchConversationsTool class
+  - Define search parameters schema (query, tags, project filters)
+  - Implement search query building and validation
+  - Integrate with RefBase search API endpoints
+  - Add result formatting and pagination handling
+  - Implement search result ranking and relevance
+  - Write tests for various search scenarios
+  - _Requirements: 2.4, 2.5_
 
-  - [ ] 5.2 Add reconnection and error handling
-    - Implement exponential backoff reconnection strategy with configurable parameters
-    - Create connection state management (connected, disconnected, reconnecting)
-    - Add connection timeout handling and cleanup
-    - Implement connection pooling for multiple concurrent IDE connections
-    - Write integration tests for connection failure and recovery scenarios
-    - _Requirements: 1.4, 1.6, 7.1, 7.2_
+- [ ] 6. Implement get_conversation Tool
+  - Create GetConversationTool class
+  - Define input schema for conversation ID parameter
+  - Implement conversation retrieval by ID
+  - Add error handling for not found cases
+  - Format conversation data for AI consumption
+  - Handle user permission validation
+  - Write tests for conversation retrieval
+  - _Requirements: 2.6, 2.7_
 
-## IDE Integration and Adapters
+### Phase 3: Bug Tracking Tools
 
-- [ ] 6. Build IDE Adapter Framework
-  - [ ] 6.1 Create base IDE adapter interface
-    - Define IDEAdapter interface with common methods for all IDE types
-    - Create abstract BaseIDEAdapter class with shared functionality
-    - Implement adapter factory pattern for creating IDE-specific adapters
-    - Add adapter registration and discovery system
-    - Write unit tests for adapter framework and factory pattern
-    - _Requirements: 1.1, 1.2_
+- [ ] 7. Implement save_bug Tool
+  - Create SaveBugTool class with comprehensive bug data schema
+  - Implement bug data validation (title, description, severity, etc.)
+  - Add project context extraction and association
+  - Integrate with RefBase bug tracking API
+  - Handle bug categorization and tagging
+  - Implement bug duplicate detection suggestions
+  - Write tests for bug saving functionality
+  - _Requirements: 3.1, 3.2_
 
-  - [ ] 6.2 Implement Cursor IDE adapter
-    - Create CursorAdapter class extending BaseIDEAdapter
-    - Implement Cursor-specific connection handling and message parsing
-    - Add Cursor workspace information extraction and project context detection
-    - Implement Cursor conversation capture with code block and file reference extraction
-    - Write unit tests for Cursor-specific functionality and message handling
-    - _Requirements: 1.1, 1.2, 3.1_
+- [ ] 8. Implement search_bugs Tool
+  - Create SearchBugsTool class
+  - Define search schema with status, severity, and tag filters
+  - Implement bug search with multiple filter combinations
+  - Add search by symptoms and solution keywords
+  - Integrate with RefBase bug search endpoints
+  - Format search results with relevance scoring
+  - Write tests for bug search functionality
+  - _Requirements: 3.3, 3.7_
 
-  - [ ] 6.3 Implement Claude Code adapter
-    - Create ClaudeAdapter class with Claude-specific protocol handling
-    - Implement Claude conversation extraction and context parsing
-    - Add Claude project information detection and codebase analysis
-    - Create Claude-specific error handling and recovery mechanisms
-    - Write unit tests for Claude adapter functionality
-    - _Requirements: 1.1, 1.2, 3.1_
+- [ ] 9. Implement Bug Management Tools (update_bug_status, get_bug_details)
+  - Create UpdateBugStatusTool and GetBugDetailsTool classes
+  - Implement bug status validation and transitions
+  - Add detailed bug information retrieval
+  - Handle bug history and change tracking
+  - Implement user permission checks for bug updates
+  - Add bug relationship management (duplicates, related)
+  - Write tests for bug management operations
+  - _Requirements: 3.4, 3.5, 3.6_
 
-  - [ ] 6.4 Implement Kiro IDE adapter
-    - Create KiroAdapter class with Kiro-specific integration
-    - Implement Kiro conversation capture with spec information extraction
-    - Add Kiro workspace detection and project context analysis
-    - Create Kiro-specific features like spec linking and task integration
-    - Write unit tests for Kiro adapter and spec integration
-    - _Requirements: 1.1, 1.2, 3.1_
+### Phase 4: Feature and Solution Tools
 
-## Conversation Capture and Processing
+- [ ] 10. Implement save_feature Tool
+  - Create SaveFeatureTool class with feature data schema
+  - Implement code example parsing and language detection
+  - Add implementation pattern extraction
+  - Integrate with RefBase feature storage API
+  - Handle tech stack tagging and categorization
+  - Implement feature success metrics tracking
+  - Write tests for feature saving functionality
+  - _Requirements: 4.1, 4.2, 4.6, 4.7_
 
-- [ ] 7. Build Conversation Capture System
-  - [ ] 7.1 Implement ConversationCapturer class
-    - Create ConversationCapturer with message extraction and conversation assembly
-    - Implement conversation session tracking and boundary detection
-    - Add code block extraction with language detection and syntax highlighting preservation
-    - Create file reference tracking and modification detection
-    - Write unit tests for conversation capture and message processing
-    - _Requirements: 2.1, 2.2, 2.3_
+- [ ] 11. Implement search_features Tool
+  - Create SearchFeaturesTool class
+  - Define search schema with tech stack and pattern filters
+  - Implement feature search by implementation keywords
+  - Add similarity matching for code patterns
+  - Integrate with RefBase feature search endpoints
+  - Format results with code examples and patterns
+  - Write tests for feature search functionality
+  - _Requirements: 4.3, 4.5_
 
-  - [ ] 7.2 Add conversation processing pipeline
-    - Implement conversation validation and sanitization
-    - Create conversation categorization using keyword analysis and pattern matching
-    - Add conversation metadata extraction (duration, message count, complexity)
-    - Implement conversation summary generation for quick overview
-    - Write unit tests for processing pipeline and categorization accuracy
-    - _Requirements: 2.2, 2.3, 2.8_
+- [ ] 12. Implement get_feature_implementation Tool
+  - Create GetFeatureImplementationTool class
+  - Implement detailed feature retrieval with code examples
+  - Add implementation step extraction and formatting
+  - Handle pattern and best practice retrieval
+  - Format code examples with syntax highlighting
+  - Add dependency and prerequisite information
+  - Write tests for feature implementation retrieval
+  - _Requirements: 4.4, 4.8_
 
-- [ ] 8. Implement Context Extraction System
-  - [ ] 8.1 Build ContextExtractor class
-    - Create ContextExtractor with project detection and analysis capabilities
-    - Implement git repository information extraction (branch, commit, status)
-    - Add tech stack detection from package files and project structure
-    - Create dependency extraction from package.json, requirements.txt, etc.
-    - Write unit tests for context extraction accuracy and edge cases
-    - _Requirements: 3.1, 3.2, 3.4_
+### Phase 5: Project Context and Pattern Tools
 
-  - [ ] 8.2 Add file change tracking
-    - Implement file modification detection and before/after content capture
-    - Create file change categorization (create, modify, delete, rename)
-    - Add file change association with conversation messages and sessions
-    - Implement file change validation and conflict detection
-    - Write unit tests for file change tracking and association
-    - _Requirements: 3.3, 3.5_
+- [ ] 13. Implement get_project_context Tool
+  - Create GetProjectContextTool class
+  - Implement project structure analysis from file paths
+  - Add tech stack detection from package files
+  - Extract git repository information when available
+  - Analyze programming language and framework usage
+  - Cache project context for performance
+  - Write tests for project context extraction
+  - _Requirements: 5.1, 5.2, 5.5, 5.6_
 
-## Processing Queue and Async Handling
+- [ ] 14. Implement search_similar_projects Tool
+  - Create SearchSimilarProjectsTool class
+  - Implement tech stack matching algorithms
+  - Add project similarity scoring based on technologies
+  - Integrate with RefBase project search endpoints
+  - Format results with project comparisons
+  - Add project pattern recommendations
+  - Write tests for project similarity search
+  - _Requirements: 5.3_
 
-- [ ] 9. Build Processing Queue System
-  - [ ] 9.1 Implement ProcessingQueue class
-    - Create ProcessingQueue with job queuing and worker management
-    - Implement job prioritization and scheduling with configurable workers
-    - Add job retry logic with exponential backoff and maximum attempt limits
-    - Create job status tracking and progress monitoring
-    - Write unit tests for queue operations and job processing
-    - _Requirements: 2.7, 8.1, 8.2_
+- [ ] 15. Implement get_project_patterns Tool
+  - Create GetProjectPatternsTool class
+  - Implement pattern extraction for project types
+  - Add common implementation pattern retrieval
+  - Format patterns with steps and examples
+  - Include best practices and common issues
+  - Add pattern success rate information
+  - Write tests for project pattern retrieval
+  - _Requirements: 5.4, 5.7_
 
-  - [ ] 9.2 Add queue persistence and recovery
-    - Implement queue persistence using file-based storage for reliability
-    - Create queue recovery mechanism for server restarts
-    - Add dead letter queue for failed jobs that exceed retry limits
-    - Implement queue metrics and monitoring for performance analysis
-    - Write integration tests for queue persistence and recovery scenarios
-    - _Requirements: 7.8, 8.1_
+### Phase 6: Error Handling and Performance
 
-## Database Integration and Sync
+- [ ] 16. Implement Comprehensive Error Handling
+  - Create MCPError classes with specific error types
+  - Implement error response formatting for MCP protocol
+  - Add retry logic with exponential backoff for API calls
+  - Create error logging with context information
+  - Implement graceful degradation for partial failures
+  - Add error recovery and circuit breaker patterns
+  - Write tests for error handling scenarios
+  - _Requirements: 8.1, 8.2, 8.3, 8.6_
 
-- [ ] 10. Implement Database Sync System
-  - [ ] 10.1 Create DatabaseSync class
-    - Implement DatabaseSync with Supabase client integration
-    - Create conversation transformation to universal database schema
-    - Add real-time sync triggers for webapp updates
-    - Implement batch processing for multiple conversations
-    - Write unit tests for database operations and data transformation
-    - _Requirements: 4.1, 4.2, 4.3_
+- [ ] 17. Add Performance Optimizations and Caching
+  - Implement response caching for frequently accessed data
+  - Add request batching for multiple similar operations
+  - Implement connection pooling for RefBase API
+  - Add performance monitoring and metrics collection
+  - Optimize JSON parsing and validation
+  - Implement memory management and cleanup
+  - Write performance tests and benchmarks
+  - _Requirements: 9.1, 9.2, 9.4, 9.6_
 
-  - [ ] 10.2 Add sync reliability and error handling
-    - Implement local queue for offline conversation storage
-    - Create sync retry mechanism with exponential backoff
-    - Add conflict resolution for concurrent updates
-    - Implement data integrity validation and consistency checks
-    - Write integration tests for sync reliability and error recovery
-    - _Requirements: 4.4, 4.5, 7.6_
+- [ ] 18. Add Rate Limiting and Resource Management
+  - Implement rate limiting per user and per tool
+  - Add request queuing for rate limit management
+  - Create resource usage monitoring
+  - Implement timeout handling for long operations
+  - Add system health checks and diagnostics
+  - Create performance alerts and monitoring
+  - Write tests for rate limiting and resource management
+  - _Requirements: 9.3, 9.7, 9.8_
 
-## Session Management and Outcome Tracking
+### Phase 7: Configuration and Deployment
 
-- [ ] 11. Build Session Tracking System
-  - [ ] 11.1 Implement SessionManager class
-    - Create SessionManager with session lifecycle tracking
-    - Implement session outcome analysis and success detection
-    - Add session metrics calculation (duration, message count, file changes)
-    - Create session association with git commits and test results
-    - Write unit tests for session management and outcome detection
-    - _Requirements: 5.1, 5.2, 5.4_
+- [ ] 19. Build Configuration Management System
+  - Create comprehensive configuration schema
+  - Implement environment variable and file-based config
+  - Add configuration validation and error reporting
+  - Create configuration templates for different environments
+  - Implement hot-reload for non-critical settings
+  - Add configuration documentation and examples
+  - Write tests for configuration loading and validation
+  - _Requirements: 10.2, 10.5, 10.6, 10.7_
 
-  - [ ] 11.2 Add pattern extraction from sessions
-    - Implement pattern recognition from successful sessions
-    - Create implementation step extraction from conversation flow
-    - Add code template generation from successful implementations
-    - Implement pattern validation and quality scoring
-    - Write unit tests for pattern extraction accuracy and usefulness
-    - _Requirements: 5.5, 5.6_
+- [ ] 20. Create CLI Interface and Setup Tools
+  - Implement CLI commands for server management
+  - Add configuration setup and validation commands
+  - Create diagnostic and troubleshooting tools
+  - Implement health check and status commands
+  - Add token generation and validation utilities
+  - Create setup wizards for different IDEs
+  - Write CLI tests and documentation
+  - _Requirements: 10.1, 10.3, 10.4, 10.8_
 
-## Local Storage and Backup System
+- [ ] 21. Add Logging and Monitoring
+  - Implement structured logging with Winston
+  - Create log formatters for different environments
+  - Add log rotation and cleanup policies
+  - Implement metrics collection and reporting
+  - Create audit logging for security events
+  - Add debug logging modes for troubleshooting
+  - Write tests for logging functionality
+  - _Requirements: 11.1, 11.2, 11.3, 11.5, 11.8_
 
-- [ ] 12. Implement Local Queue and Backup
-  - [ ] 12.1 Create LocalQueue class
-    - Implement file-based local queue for offline operation
-    - Create queue item serialization and deserialization
-    - Add queue size management and cleanup policies
-    - Implement queue corruption detection and recovery
-    - Write unit tests for local queue operations and reliability
-    - _Requirements: 7.6, 8.1_
+### Phase 8: Security and Data Validation
 
-  - [ ] 12.2 Add backup and recovery mechanisms
-    - Implement automatic backup of critical data and configuration
-    - Create backup rotation and cleanup policies
-    - Add recovery procedures for corrupted or lost data
-    - Implement backup validation and integrity checking
-    - Write integration tests for backup and recovery scenarios
-    - _Requirements: 7.8, 8.1_
+- [ ] 22. Implement Data Validation and Security
+  - Create comprehensive JSON schema validation for all tools
+  - Implement input sanitization and XSS prevention
+  - Add data size limits and validation
+  - Create secure token handling and storage
+  - Implement audit logging for all tool operations
+  - Add data integrity checks and validation
+  - Write security tests and vulnerability assessments
+  - _Requirements: 12.1, 12.2, 12.3, 12.5, 12.6_
 
-## Error Handling and Resilience
+- [ ] 23. Add Advanced Security Features
+  - Implement request signing for API calls
+  - Add IP-based access controls if needed
+  - Create session management for tool calls
+  - Implement data anonymization options
+  - Add compliance logging and reporting
+  - Create security monitoring and alerting
+  - Write comprehensive security tests
+  - _Requirements: 6.5, 11.3_
 
-- [ ] 13. Implement Comprehensive Error Handling
-  - [ ] 13.1 Create error handling framework
-    - Implement MCPError class with error classification and context
-    - Create ErrorHandler with recovery strategies for different error types
-    - Add circuit breaker pattern for external service failures
-    - Implement error escalation and notification system
-    - Write unit tests for error handling and recovery strategies
-    - _Requirements: 7.1, 7.2, 7.3_
+### Phase 9: Integration Testing and Documentation
 
-  - [ ] 13.2 Add resilience patterns
-    - Implement retry mechanisms with exponential backoff and jitter
-    - Create timeout handling for long-running operations
-    - Add graceful degradation for partial system failures
-    - Implement health checks and automatic recovery procedures
-    - Write integration tests for resilience under various failure conditions
-    - _Requirements: 7.4, 7.5, 7.7_
+- [ ] 24. Build Integration Test Suite
+  - Create integration tests with mock RefBase API
+  - Implement end-to-end testing with real API calls
+  - Add performance testing and load testing
+  - Create test data generators and fixtures
+  - Implement automated testing pipelines
+  - Add test coverage reporting and analysis
+  - Write test documentation and examples
+  - _Requirements: All requirements validation_
 
-## Security Implementation
+- [ ] 25. Create Comprehensive Documentation
+  - Write API documentation for all MCP tools
+  - Create setup guides for different IDEs (Cursor, Claude Code, Kiro)
+  - Add troubleshooting guides and FAQ
+  - Create configuration reference documentation
+  - Write developer documentation for extending tools
+  - Add example use cases and workflows
+  - Create deployment and production guides
+  - _Requirements: 10.3, 10.4_
 
-- [ ] 14. Implement Security Measures
-  - [ ] 14.1 Add authentication and authorization
-    - Implement API key authentication for IDE connections
-    - Create role-based access control for different operations
-    - Add request validation and sanitization
-    - Implement rate limiting to prevent abuse
-    - Write security tests for authentication and authorization
-    - _Requirements: 9.1, 9.3, 9.6_
+### Phase 10: Deployment and Distribution
 
-  - [ ] 14.2 Add data protection and privacy
-    - Implement data encryption for sensitive conversation content
-    - Create data anonymization options for privacy protection
-    - Add secure credential storage and rotation
-    - Implement audit logging for security events
-    - Write security tests for data protection and privacy features
-    - _Requirements: 9.1, 9.2, 9.5, 9.7_
+- [ ] 26. Create Distribution Package
+  - Build npm package for easy installation
+  - Create standalone executable for non-Node environments
+  - Set up automated builds and releases
+  - Create Docker container with proper configuration
+  - Add version management and update mechanisms
+  - Create installation verification tools
+  - Write distribution documentation
+  - _Requirements: 10.1_
 
-## Performance Optimization
-
-- [ ] 15. Implement Performance Optimizations
-  - [ ] 15.1 Add memory and resource management
-    - Implement memory usage monitoring and garbage collection optimization
-    - Create resource pooling for database connections and workers
-    - Add streaming processing for large conversations
-    - Implement caching for frequently accessed data
-    - Write performance tests for memory usage and resource efficiency
-    - _Requirements: 8.1, 8.2, 8.7_
-
-  - [ ] 15.2 Optimize processing performance
-    - Implement parallel processing for independent operations
-    - Create batch processing for database operations
-    - Add performance profiling and bottleneck identification
-    - Implement performance metrics collection and analysis
-    - Write load tests for high-volume conversation processing
-    - _Requirements: 8.3, 8.4, 8.8_
-
-## Integration and End-to-End Testing
-
-- [ ] 16. Build Integration Test Suite
-  - [ ] 16.1 Create integration test framework
-    - Set up test database and mock IDE connections
-    - Create test data generators for conversations and contexts
-    - Implement test utilities for database setup and cleanup
-    - Add integration test helpers for common scenarios
-    - Write integration tests for core workflows
-    - _Requirements: All requirements validation_
-
-  - [ ] 16.2 Add end-to-end testing
-    - Create end-to-end test scenarios covering complete workflows
-    - Implement performance benchmarks and load testing
-    - Add chaos testing for resilience validation
-    - Create automated test reporting and metrics collection
-    - Write comprehensive test documentation and examples
-    - _Requirements: All requirements validation_
-
-## Server Application and CLI
-
-- [ ] 17. Build Main Server Application
-  - [ ] 17.1 Create server entry point and initialization
-    - Implement main server class with component initialization
-    - Create graceful startup and shutdown procedures
-    - Add signal handling for clean server termination
-    - Implement server status reporting and diagnostics
-    - Write tests for server lifecycle and initialization
-    - _Requirements: 6.6, 10.1_
-
-  - [ ] 17.2 Add CLI interface and commands
-    - Create command-line interface for server management
-    - Implement diagnostic commands for troubleshooting
-    - Add configuration validation and testing commands
-    - Create database migration and setup commands
-    - Write CLI tests and usage documentation
-    - _Requirements: 6.5, 6.8, 10.8_
-
-## Documentation and Deployment
-
-- [ ] 18. Create Documentation and Deployment Setup
-  - [ ] 18.1 Write comprehensive documentation
-    - Create API documentation with examples and usage patterns
-    - Write setup and configuration guides for different environments
-    - Add troubleshooting guides and common issues resolution
-    - Create developer documentation for extending and customizing
-    - Document all configuration options and environment variables
-    - _Requirements: 6.4, 6.5_
-
-  - [ ] 18.2 Set up deployment and distribution
-    - Create Docker containerization with multi-stage builds
-    - Set up npm package configuration for distribution
-    - Create deployment scripts and configuration templates
-    - Add monitoring and alerting setup for production
-    - Write deployment documentation and best practices
-    - _Requirements: 6.1, 10.1_
-
-## Final Integration and Testing
-
-- [ ] 19. Complete System Integration
-  - [ ] 19.1 Wire all components together
-    - Integrate all components into cohesive server application
-    - Implement component dependency injection and lifecycle management
-    - Add comprehensive error handling across all component boundaries
-    - Create system-wide configuration validation and startup checks
-    - Write integration tests for complete system functionality
-    - _Requirements: All requirements integration_
-
-  - [ ] 19.2 Validate against RefBase webapp integration
-    - Test MCP server integration with existing RefBase webapp
-    - Validate conversation sync and real-time updates
-    - Test universal conversation schema compatibility
-    - Verify pattern extraction and success tracking
-    - Write end-to-end tests with actual RefBase webapp instance
-    - _Requirements: 4.1, 4.2, 4.3, 4.7_
-
----
+- [ ] 27. Final Integration and Testing
+  - Test MCP server with all supported IDEs
+  - Validate integration with existing RefBase webapp
+  - Perform load testing with realistic usage patterns
+  - Test authentication flow with actual RefBase tokens
+  - Validate all tool operations with real RefBase API
+  - Create production deployment checklist
+  - Write final validation and acceptance tests
+  - _Requirements: All requirements integration_
 
 ## Implementation Notes
 
 **Architecture Principles:**
-- Each task builds incrementally on previous work
-- All code is tested before moving to next task
-- Components are loosely coupled and easily testable
-- Error handling is implemented at every level
-- Performance and security are considered throughout
+- Focus on explicit MCP tools rather than automatic capture
+- Direct integration with existing RefBase API endpoints
+- Token-based authentication for security
+- Simple, reliable tool-based interaction model
+- Comprehensive error handling and user feedback
+
+**Key Differences from Original Plan:**
+- **Simpler Architecture**: No complex IDE monitoring or automatic capture
+- **Tool-Based**: AI explicitly calls tools when needed
+- **API Integration**: Direct calls to existing RefBase endpoints
+- **User Control**: Users/AI decide what to save and search
+- **Faster Implementation**: Focused scope with clear deliverables
 
 **Testing Strategy:**
-- Unit tests for individual components and functions
-- Integration tests for component interactions
-- End-to-end tests for complete workflows
-- Performance tests for scalability validation
-- Security tests for vulnerability assessment
+- Unit tests for each tool class and component
+- Integration tests with mock and real RefBase API
+- End-to-end tests with actual IDE integration
+- Performance tests for tool response times
+- Security tests for authentication and data validation
 
-**Quality Assurance:**
-- TypeScript for type safety and better developer experience
-- ESLint and Prettier for code quality and consistency
-- Comprehensive error handling and logging
-- Monitoring and observability built-in
-- Documentation and examples for all features
+**Success Metrics:**
+- All 15+ MCP tools working correctly
+- < 5 second response time for tool calls
+- Successful integration with Cursor, Claude Code, and Kiro
+- Seamless data flow to/from RefBase webapp
+- Comprehensive error handling and user feedback
+
+This implementation plan provides a clear, incremental path to building practical MCP tools that integrate with your existing RefBase webapp.
