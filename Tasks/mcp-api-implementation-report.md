@@ -70,11 +70,34 @@ This report documents the complete implementation of MCP (Model Context Protocol
 - **POST /api/features** - Save feature implementations with code examples/tech stack
 - **GET /api/features** - Search features by query/tech stack/tags
 
-### 4. Authentication & Security
-- **Bearer Token Authentication**: Uses Supabase user JWT tokens
+### 4. Authentication & Security  
+- **CRITICAL CHANGE**: **Migrated from JWT tokens to permanent API keys** 
+- **Bearer Token Authentication**: Now supports both JWT tokens AND permanent API keys
 - **Row Level Security (RLS)**: User-based data isolation
 - **Service Key**: Server-side operations with elevated permissions
 - **CORS Configuration**: Proper cross-origin request handling
+
+#### ⚠️ BREAKING CHANGE: JWT → API Key Migration (August 28, 2025)
+**Problem Solved**: JWT tokens expired every hour, causing MCP tools to fail constantly
+**Solution**: Implemented permanent API key system that never expires
+
+**Before (OLD)**: 
+```javascript
+// JWT tokens expired every 60 minutes - terrible UX for MCP
+const jwtToken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...";
+fetch('/api/conversations', {
+  headers: { 'Authorization': `Bearer ${jwtToken}` }
+});
+```
+
+**After (NEW)**:
+```javascript  
+// Permanent API keys - set once, use forever
+const apiKey = "refb_a1b2c3d4e5f6789012345678901234ab";
+fetch('/api/conversations', {
+  headers: { 'Authorization': `Bearer ${apiKey}` }
+});
+```
 
 ### 5. Data Models
 
@@ -469,5 +492,52 @@ The RefBase MCP API implementation was completed successfully with **all 8 endpo
 - Full user authentication and data isolation
 - Production-ready deployment on Netlify
 - Comprehensive error handling and validation
+- **🔑 UPGRADED TO PERMANENT API KEYS** (August 28, 2025) - No more token expiration issues!
 
 The RefBase MCP API is now ready to enable AI assistants to seamlessly save and retrieve knowledge from the RefBase platform, fulfilling the original project vision. **Total implementation time: Single session with systematic debugging approach.**
+
+---
+
+## 🚨 CRITICAL UPDATE: API Key Migration (August 28, 2025)
+
+### What Changed
+**REPLACED**: Expiring JWT tokens (1-hour) → **Permanent API keys** (never expire)
+
+### MCP Server Impact
+**ALL MCP servers must be updated** to use the new API key authentication:
+
+1. **Generate API Key**: Users go to Settings → API Keys → Create API Key
+2. **Update MCP Config**: Replace JWT token with permanent API key
+3. **Set and Forget**: API key works forever until manually revoked
+
+### New Database Tables Added
+- **`api_keys`** - Stores hashed API keys with usage tracking
+- **5 migration files** - Complete schema with security fixes
+
+### New API Endpoints Added  
+- **POST /api/api-keys** - Create new API key
+- **GET /api/api-keys** - List user's keys
+- **PUT /api/api-keys/:id** - Update key (rename, enable/disable)
+- **DELETE /api/api-keys/:id** - Delete compromised key
+
+### New UI Added
+- **Settings → "API Keys" tab** - Full key management interface
+- **Key creation wizard** - Generate named keys for different tools
+- **Usage monitoring** - Track when keys are used
+- **Security warnings** - Best practices for key management
+
+### Security Features
+✅ **Keys are hashed** - Never stored in plaintext  
+✅ **One-time display** - Keys shown only at creation  
+✅ **Usage tracking** - Monitor suspicious activity  
+✅ **Instant revocation** - Disable compromised keys immediately  
+✅ **User isolation** - RLS policies enforce data separation  
+
+### Migration Status
+✅ **Database**: Migrated with security fixes  
+✅ **API**: Dual authentication (JWT + API keys)  
+✅ **UI**: Complete key management interface  
+🔄 **Deployment**: In progress  
+❌ **MCP Servers**: Need updates to use API keys  
+
+**Result**: Solved the #1 UX problem with MCP integration - no more expired tokens! 🎉

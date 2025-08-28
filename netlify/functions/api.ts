@@ -73,12 +73,24 @@ const authenticateWithApiKey = async (apiKey: string, req: express.Request, res:
       return res.status(401).json({ success: false, error: 'Invalid API key format' });
     }
     
-    // Hash the API key for lookup
-    const { data: hashResult, error: hashError } = await supabase
-      .rpc('hash_api_key', { key_text: apiKey });
+    // Hash the API key for lookup (with fallback)
+    let hashResult: string;
     
-    if (hashError || !hashResult) {
-      console.error('API key hash error:', hashError);
+    try {
+      const { data: dbHash, error: hashError } = await supabase
+        .rpc('hash_api_key', { key_text: apiKey });
+      
+      if (hashError || !dbHash) {
+        console.warn('Database hashing failed in auth, using server-side hashing:', hashError);
+        // Fallback: Hash key server-side
+        const crypto = require('crypto');
+        const salt = 'refbase_api_salt_' + process.env.SUPABASE_URL;
+        hashResult = crypto.createHash('sha256').update(apiKey + salt).digest('hex');
+      } else {
+        hashResult = dbHash;
+      }
+    } catch (error) {
+      console.error('API key hash error:', error);
       return res.status(500).json({ success: false, error: 'Authentication failed' });
     }
     
@@ -663,20 +675,40 @@ app.post('/api/api-keys', async (req, res) => {
       });
     }
     
-    // Generate API key
-    const { data: fullKey, error: keyGenError } = await supabase.rpc('generate_api_key');
+    // Generate API key server-side (fallback approach)
+    let fullKey: string;
+    let keyHash: string;
     
-    if (keyGenError || !fullKey) {
-      console.error('Key generation error:', keyGenError);
+    try {
+      // Try database function first
+      const { data: dbKey, error: keyGenError } = await supabase.rpc('generate_api_key');
+      
+      if (keyGenError || !dbKey) {
+        console.warn('Database key generation failed, using server-side generation:', keyGenError);
+        // Fallback: Generate key server-side
+        const crypto = require('crypto');
+        const keyBytes = crypto.randomBytes(16);
+        fullKey = 'refb_' + keyBytes.toString('hex');
+      } else {
+        fullKey = dbKey;
+      }
+      
+      // Try database hashing first
+      const { data: dbHash, error: hashError } = await supabase.rpc('hash_api_key', { key_text: fullKey });
+      
+      if (hashError || !dbHash) {
+        console.warn('Database hashing failed, using server-side hashing:', hashError);
+        // Fallback: Hash key server-side
+        const crypto = require('crypto');
+        const salt = 'refbase_api_salt_' + process.env.SUPABASE_URL;
+        keyHash = crypto.createHash('sha256').update(fullKey + salt).digest('hex');
+      } else {
+        keyHash = dbHash;
+      }
+      
+    } catch (error) {
+      console.error('API key generation error:', error);
       return res.status(500).json({ success: false, error: 'Failed to generate API key' });
-    }
-    
-    // Hash the key
-    const { data: keyHash, error: hashError } = await supabase.rpc('hash_api_key', { key_text: fullKey });
-    
-    if (hashError || !keyHash) {
-      console.error('Key hash error:', hashError);
-      return res.status(500).json({ success: false, error: 'Failed to process API key' });
     }
     
     // Calculate expiration date
