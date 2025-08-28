@@ -708,7 +708,16 @@ app.post('/api/api-keys', async (req, res) => {
       
     } catch (error) {
       console.error('API key generation error:', error);
-      return res.status(500).json({ success: false, error: 'Failed to generate API key' });
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to generate API key',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
     
     // Calculate expiration date
