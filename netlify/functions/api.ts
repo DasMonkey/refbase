@@ -21,7 +21,7 @@ const supabase = createClient(
   }
 );
 
-// Auth middleware - validates user token
+// Auth middleware - validates both JWT tokens and API keys
 const authenticateUser = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
@@ -32,19 +32,103 @@ const authenticateUser = async (req: express.Request, res: express.Response, nex
 
     const token = authHeader.replace('Bearer ', '');
     
+    // Check if this is an API key (starts with refb_)
+    if (token.startsWith('refb_')) {
+      return await authenticateWithApiKey(token, req, res, next);
+    }
+    
+    // Otherwise, treat as JWT token
+    return await authenticateWithJWT(token, req, res, next);
+  } catch (error) {
+    console.error('Auth middleware error:', error);
+    return res.status(500).json({ success: false, error: 'Authentication failed' });
+  }
+};
+
+// JWT authentication (existing behavior)
+const authenticateWithJWT = async (token: string, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  try {
     // Validate the user token
     const { data: { user }, error } = await supabase.auth.getUser(token);
     
     if (error || !user) {
-      return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+      return res.status(401).json({ success: false, error: 'Invalid or expired JWT token' });
     }
 
     // Add user to request object
     (req as any).user = user;
+    (req as any).authMethod = 'jwt';
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
-    return res.status(500).json({ success: false, error: 'Authentication failed' });
+    console.error('JWT auth error:', error);
+    return res.status(500).json({ success: false, error: 'JWT authentication failed' });
+  }
+};
+
+// API key authentication 
+const authenticateWithApiKey = async (apiKey: string, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  try {
+    // Validate API key format
+    if (!apiKey.match(/^refb_[a-f0-9]{32}$/)) {
+      return res.status(401).json({ success: false, error: 'Invalid API key format' });
+    }
+    
+    // Hash the API key for lookup
+    const { data: hashResult, error: hashError } = await supabase
+      .rpc('hash_api_key', { key_text: apiKey });
+    
+    if (hashError || !hashResult) {
+      console.error('API key hash error:', hashError);
+      return res.status(500).json({ success: false, error: 'Authentication failed' });
+    }
+    
+    // Look up the API key in database
+    const { data: keyData, error: keyError } = await supabase
+      .from('api_keys')
+      .select('id, user_id, name, permissions, scopes, is_active, expires_at, usage_count')
+      .eq('key_hash', hashResult)
+      .eq('is_active', true)
+      .single();
+    
+    if (keyError || !keyData) {
+      return res.status(401).json({ success: false, error: 'Invalid or inactive API key' });
+    }
+    
+    // Check if key has expired
+    if (keyData.expires_at && new Date(keyData.expires_at) < new Date()) {
+      return res.status(401).json({ success: false, error: 'API key has expired' });
+    }
+    
+    // Get user details
+    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(keyData.user_id);
+    
+    if (userError || !userData.user) {
+      return res.status(401).json({ success: false, error: 'User not found for API key' });
+    }
+    
+    // Update last used timestamp and usage count
+    await supabase
+      .from('api_keys')
+      .update({ 
+        last_used_at: new Date().toISOString(),
+        usage_count: keyData.usage_count + 1
+      })
+      .eq('id', keyData.id);
+    
+    // Add user and API key info to request
+    (req as any).user = userData.user;
+    (req as any).authMethod = 'api_key';
+    (req as any).apiKey = {
+      id: keyData.id,
+      name: keyData.name,
+      permissions: keyData.permissions,
+      scopes: keyData.scopes
+    };
+    
+    next();
+  } catch (error) {
+    console.error('API key auth error:', error);
+    return res.status(500).json({ success: false, error: 'API key authentication failed' });
   }
 };
 
@@ -294,6 +378,12 @@ app.get('/api/bugs', async (req, res) => {
 // FEATURES ENDPOINTS
 app.post('/api/features', async (req, res) => {
   try {
+    // Parse body if it's a Buffer
+    let body = req.body;
+    if (Buffer.isBuffer(req.body)) {
+      body = JSON.parse(req.body.toString());
+    }
+    
     const { 
       title, 
       description, 
@@ -304,7 +394,7 @@ app.post('/api/features', async (req, res) => {
       techStack = [],
       tags = [],
       projectContext 
-    } = req.body;
+    } = body;
     const user = (req as any).user;
 
     if (!title || !description) {
@@ -325,7 +415,8 @@ app.post('/api/features', async (req, res) => {
       tags,
       project_context: projectContext,
       user_id: user.id,
-      status: 'active',
+      project_id: null, // For MCP API, we allow features without specific projects
+      status: 'implemented',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -526,6 +617,258 @@ app.get('/api/documents', async (req, res) => {
 
   } catch (error) {
     console.error('Search documents error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// API KEY MANAGEMENT ENDPOINTS
+app.post('/api/api-keys', async (req, res) => {
+  try {
+    // Only allow JWT authentication for API key management
+    if ((req as any).authMethod !== 'jwt') {
+      return res.status(403).json({ success: false, error: 'API key management requires JWT authentication' });
+    }
+    
+    let body = req.body;
+    if (Buffer.isBuffer(req.body)) {
+      body = JSON.parse(req.body.toString());
+    }
+    
+    const { 
+      name, 
+      permissions = ['read', 'write'], 
+      scopes = ['conversations', 'bugs', 'features', 'documents'],
+      expiresInDays = null 
+    } = body;
+    const user = (req as any).user;
+    
+    if (!name || typeof name !== 'string' || name.length < 1 || name.length > 100) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Name is required and must be 1-100 characters' 
+      });
+    }
+    
+    // Check if user already has 10 active keys (reasonable limit)
+    const { count: existingKeysCount } = await supabase
+      .from('api_keys')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('is_active', true);
+    
+    if (existingKeysCount && existingKeysCount >= 10) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Maximum of 10 active API keys allowed per user' 
+      });
+    }
+    
+    // Generate API key
+    const { data: fullKey, error: keyGenError } = await supabase.rpc('generate_api_key');
+    
+    if (keyGenError || !fullKey) {
+      console.error('Key generation error:', keyGenError);
+      return res.status(500).json({ success: false, error: 'Failed to generate API key' });
+    }
+    
+    // Hash the key
+    const { data: keyHash, error: hashError } = await supabase.rpc('hash_api_key', { key_text: fullKey });
+    
+    if (hashError || !keyHash) {
+      console.error('Key hash error:', hashError);
+      return res.status(500).json({ success: false, error: 'Failed to process API key' });
+    }
+    
+    // Calculate expiration date
+    let expiresAt = null;
+    if (expiresInDays && typeof expiresInDays === 'number' && expiresInDays > 0) {
+      const expireDate = new Date();
+      expireDate.setDate(expireDate.getDate() + expiresInDays);
+      expiresAt = expireDate.toISOString();
+    }
+    
+    // Get client IP and user agent
+    const clientIp = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+    
+    // Create API key record
+    const { data: keyRecord, error: insertError } = await supabase
+      .from('api_keys')
+      .insert([{
+        user_id: user.id,
+        name,
+        key_prefix: fullKey.substring(0, 12), // refb_12345678
+        key_hash: keyHash,
+        permissions,
+        scopes,
+        expires_at: expiresAt,
+        created_from_ip: clientIp,
+        user_agent: userAgent
+      }])
+      .select('id, name, key_prefix, permissions, scopes, expires_at, created_at')
+      .single();
+    
+    if (insertError) {
+      console.error('Database insert error:', insertError);
+      return res.status(500).json({ success: false, error: 'Failed to create API key' });
+    }
+    
+    // Return the full key ONLY once - never stored or returned again
+    res.json({ 
+      success: true, 
+      data: {
+        key: fullKey, // This is the only time the full key is shown!
+        ...keyRecord,
+        message: 'API key created successfully. Save it now - it will not be shown again!'
+      }
+    });
+    
+  } catch (error) {
+    console.error('Create API key error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+app.get('/api/api-keys', async (req, res) => {
+  try {
+    // Only allow JWT authentication for API key management
+    if ((req as any).authMethod !== 'jwt') {
+      return res.status(403).json({ success: false, error: 'API key management requires JWT authentication' });
+    }
+    
+    const user = (req as any).user;
+    const { includeInactive = false } = req.query;
+    
+    let query = supabase
+      .from('api_keys')
+      .select('id, user_id, name, key_prefix, permissions, scopes, is_active, expires_at, last_used_at, usage_count, created_at, updated_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    
+    if (!includeInactive) {
+      query = query.eq('is_active', true);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) {
+      console.error('Database error:', error);
+      return res.status(500).json({ success: false, error: 'Failed to fetch API keys' });
+    }
+    
+    res.json({ 
+      success: true, 
+      data: data || []
+    });
+    
+  } catch (error) {
+    console.error('List API keys error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+app.put('/api/api-keys/:keyId', async (req, res) => {
+  try {
+    // Only allow JWT authentication for API key management
+    if ((req as any).authMethod !== 'jwt') {
+      return res.status(403).json({ success: false, error: 'API key management requires JWT authentication' });
+    }
+    
+    let body = req.body;
+    if (Buffer.isBuffer(req.body)) {
+      body = JSON.parse(req.body.toString());
+    }
+    
+    const { keyId } = req.params;
+    const { name, is_active } = body;
+    const user = (req as any).user;
+    
+    if (!keyId) {
+      return res.status(400).json({ success: false, error: 'Key ID is required' });
+    }
+    
+    const updateData: any = {};
+    
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.length < 1 || name.length > 100) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Name must be 1-100 characters' 
+        });
+      }
+      updateData.name = name;
+    }
+    
+    if (is_active !== undefined) {
+      updateData.is_active = Boolean(is_active);
+    }
+    
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid fields to update' });
+    }
+    
+    updateData.updated_at = new Date().toISOString();
+    
+    const { data, error } = await supabase
+      .from('api_keys')
+      .update(updateData)
+      .eq('id', keyId)
+      .eq('user_id', user.id)
+      .select('id, name, key_prefix, permissions, scopes, is_active, expires_at, last_used_at, usage_count, created_at, updated_at')
+      .single();
+    
+    if (error) {
+      console.error('Database error:', error);
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ success: false, error: 'API key not found' });
+      }
+      return res.status(500).json({ success: false, error: 'Failed to update API key' });
+    }
+    
+    res.json({ 
+      success: true, 
+      data: data,
+      message: 'API key updated successfully'
+    });
+    
+  } catch (error) {
+    console.error('Update API key error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/api-keys/:keyId', async (req, res) => {
+  try {
+    // Only allow JWT authentication for API key management
+    if ((req as any).authMethod !== 'jwt') {
+      return res.status(403).json({ success: false, error: 'API key management requires JWT authentication' });
+    }
+    
+    const { keyId } = req.params;
+    const user = (req as any).user;
+    
+    if (!keyId) {
+      return res.status(400).json({ success: false, error: 'Key ID is required' });
+    }
+    
+    const { error } = await supabase
+      .from('api_keys')
+      .delete()
+      .eq('id', keyId)
+      .eq('user_id', user.id);
+    
+    if (error) {
+      console.error('Database error:', error);
+      return res.status(500).json({ success: false, error: 'Failed to delete API key' });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'API key deleted successfully'
+    });
+    
+  } catch (error) {
+    console.error('Delete API key error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });

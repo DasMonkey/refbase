@@ -32,6 +32,21 @@ const testBug = {
   tags: ["ui", "login", "bug"]
 };
 
+const testFeature = {
+  title: "Dark Mode Implementation - Local Test",
+  description: "Add dark mode support to the application",
+  implementation: "Use CSS variables and context API",
+  codeExamples: [
+    {
+      language: "typescript",
+      code: "const ThemeContext = createContext<'light' | 'dark'>('light');",
+      description: "Theme context setup"
+    }
+  ],
+  techStack: ["react", "css", "typescript"],
+  tags: ["ui", "theme", "feature"]
+};
+
 const testDocument = {
   title: "Local API Test Documentation",
   content: "# API Testing\n\nThis is a test document created via MCP API locally.",
@@ -108,6 +123,15 @@ async function runTests() {
     console.log('📥 Testing bug search...');
     await makeRequest('/api/bugs?query=login', 'GET');
     await makeRequest('/api/bugs?status=open', 'GET');
+  }
+
+  // Test features
+  console.log('\n⭐ Testing Features API');
+  const feature = await makeRequest('/api/features', 'POST', testFeature);
+  if (feature?.success) {
+    console.log('📥 Testing feature search...');
+    await makeRequest('/api/features?query=dark mode', 'GET');
+    await makeRequest('/api/features?techStack=react', 'GET');
   }
 
   // Test documents
