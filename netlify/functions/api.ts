@@ -990,5 +990,98 @@ app.post('/api/test-create-key', async (req, res) => {
   }
 });
 
+// FINAL DEBUG ENDPOINT - Test the new fixed logic
+app.post('/api/debug-fixed-key', async (req, res) => {
+  try {
+    // Only allow JWT authentication for API key management
+    if ((req as any).authMethod !== 'jwt') {
+      return res.status(403).json({ success: false, error: 'JWT authentication required' });
+    }
+    
+    const user = (req as any).user;
+    console.log('Debug fixed endpoint - User ID:', user.id);
+    
+    // Use the exact same logic as the fixed main endpoint
+    let fullKey: string;
+    let keyHash: string;
+    let keyPrefix: string;
+    
+    try {
+      // Always use server-side generation for consistency
+      const crypto = require('crypto');
+      const keyBytes = crypto.randomBytes(16);
+      fullKey = 'refb_' + keyBytes.toString('hex');
+      
+      // Generate key_prefix with exactly 8 hex chars after refb_
+      keyPrefix = 'refb_' + keyBytes.toString('hex').substring(0, 8);
+      console.log('Debug fixed - Generated key_prefix:', keyPrefix);
+      
+      // Try database hashing first
+      const { data: dbHash, error: hashError } = await supabase.rpc('hash_api_key', { key_text: fullKey });
+      
+      if (hashError || !dbHash) {
+        console.warn('Database hashing failed, using server-side hashing:', hashError);
+        // Fallback: Hash key server-side with MD5 to match database function
+        keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_' + process.env.SUPABASE_URL).digest('hex');
+      } else {
+        keyHash = dbHash;
+      }
+      
+    } catch (error) {
+      console.error('Key generation error:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to generate API key',
+        details: error.message
+      });
+    }
+    
+    // Simple insert with the new logic
+    const { data: keyRecord, error: insertError } = await supabase
+      .from('api_keys')
+      .insert([{
+        user_id: user.id,
+        name: 'Debug Fixed Key Test',
+        key_prefix: keyPrefix, // Exactly 8 hex chars after refb_
+        key_hash: keyHash,
+        permissions: ['read', 'write'],
+        scopes: ['conversations', 'bugs', 'features', 'documents'],
+        is_active: true,
+        expires_at: null,
+        created_from_ip: null,
+        user_agent: 'debug-fixed'
+      }])
+      .select('id, name, key_prefix, permissions, scopes, expires_at, created_at')
+      .single();
+    
+    if (insertError) {
+      console.error('Debug fixed - Database insert error:', insertError);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Database insert failed',
+        details: insertError.message,
+        code: insertError.code
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      data: {
+        key: fullKey,
+        ...keyRecord,
+        message: 'Debug fixed API key created successfully!'
+      }
+    });
+    
+  } catch (error) {
+    console.error('Debug fixed endpoint error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
 // Export the serverless function
 export const handler = serverless(app);
