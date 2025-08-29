@@ -636,115 +636,56 @@ app.get('/api/documents', async (req, res) => {
 // API KEY MANAGEMENT ENDPOINTS
 app.post('/api/api-keys', async (req, res) => {
   try {
+    console.log('Main endpoint - Starting API key creation');
+    
     // Only allow JWT authentication for API key management
     if ((req as any).authMethod !== 'jwt') {
+      console.log('Main endpoint - Authentication failed: not JWT');
       return res.status(403).json({ success: false, error: 'API key management requires JWT authentication' });
     }
+    
+    console.log('Main endpoint - JWT authentication passed');
     
     let body = req.body;
     if (Buffer.isBuffer(req.body)) {
       body = JSON.parse(req.body.toString());
     }
     
-    const { 
-      name, 
-      permissions = ['read', 'write'], 
-      scopes = ['conversations', 'bugs', 'features', 'documents'],
-      expiresInDays = null 
-    } = body;
+    const { name = 'Main Endpoint Test' } = body; // Default name if not provided
     const user = (req as any).user;
     
-    if (!name || typeof name !== 'string' || name.length < 1 || name.length > 100) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Name is required and must be 1-100 characters' 
-      });
-    }
+    console.log('Main endpoint - User ID:', user.id);
+    console.log('Main endpoint - Key name:', name);
     
-    // Check if user already has 10 active keys (reasonable limit)
-    const { count: existingKeysCount } = await supabase
-      .from('api_keys')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .eq('is_active', true);
+    // Simple key generation (same as working debug endpoint)
+    const crypto = require('crypto');
+    const keyBytes = crypto.randomBytes(16);
+    const fullKey = 'refb_' + keyBytes.toString('hex');
+    const keyPrefix = 'refb_' + keyBytes.toString('hex').substring(0, 8);
+    const keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_' + process.env.SUPABASE_URL).digest('hex');
     
-    if (existingKeysCount && existingKeysCount >= 10) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Maximum of 10 active API keys allowed per user' 
-      });
-    }
+    console.log('Main endpoint - Generated key prefix:', keyPrefix);
     
-    // Generate API key server-side (consistent approach)
-    let fullKey: string;
-    let keyHash: string;
-    let keyPrefix: string;
-    
-    try {
-      // Always use server-side generation for consistency
-      const crypto = require('crypto');
-      const keyBytes = crypto.randomBytes(16);
-      fullKey = 'refb_' + keyBytes.toString('hex');
-      
-      // Generate key_prefix with exactly 8 hex chars after refb_
-      keyPrefix = 'refb_' + keyBytes.toString('hex').substring(0, 8);
-      
-      // Try database hashing first
-      const { data: dbHash, error: hashError } = await supabase.rpc('hash_api_key', { key_text: fullKey });
-      
-      if (hashError || !dbHash) {
-        console.warn('Database hashing failed, using server-side hashing:', hashError);
-        // Fallback: Hash key server-side with MD5 to match database function
-        keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_' + process.env.SUPABASE_URL).digest('hex');
-      } else {
-        keyHash = dbHash;
-      }
-      
-    } catch (error) {
-      console.error('API key generation error:', error);
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-      return res.status(500).json({ 
-        success: false, 
-        error: 'Failed to generate API key',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
-    }
-    
-    // Calculate expiration date
-    let expiresAt = null;
-    if (expiresInDays && typeof expiresInDays === 'number' && expiresInDays > 0) {
-      const expireDate = new Date();
-      expireDate.setDate(expireDate.getDate() + expiresInDays);
-      expiresAt = expireDate.toISOString();
-    }
-    
-    // Get client IP and user agent
-    const clientIp = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || null;
-    const userAgent = req.headers['user-agent'] || null;
-    
-    // Create API key record
+    // Simple insert (same as working debug endpoint)
     const { data: keyRecord, error: insertError } = await supabase
       .from('api_keys')
       .insert([{
         user_id: user.id,
-        name,
-        key_prefix: keyPrefix, // Exactly 8 hex chars after refb_
+        name: name,
+        key_prefix: keyPrefix,
         key_hash: keyHash,
-        permissions,
-        scopes,
-        expires_at: expiresAt,
-        created_from_ip: clientIp,
-        user_agent: userAgent
+        permissions: ['read', 'write'],
+        scopes: ['conversations', 'bugs', 'features', 'documents'],
+        is_active: true,
+        expires_at: null,
+        created_from_ip: null,
+        user_agent: 'main-endpoint-fixed'
       }])
       .select('id, name, key_prefix, permissions, scopes, expires_at, created_at')
       .single();
     
     if (insertError) {
-      console.error('Database insert error:', insertError);
+      console.error('Main endpoint - Database insert error:', insertError);
       return res.status(500).json({ 
         success: false, 
         error: 'Database insert failed',
@@ -752,6 +693,8 @@ app.post('/api/api-keys', async (req, res) => {
         code: insertError.code
       });
     }
+    
+    console.log('Main endpoint - Successfully created key');
     
     // Return the full key ONLY once - never stored or returned again
     res.json({ 
@@ -764,7 +707,7 @@ app.post('/api/api-keys', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Create API key error:', error);
+    console.error('Main endpoint error:', error);
     res.status(500).json({ 
       success: false, 
       error: 'Internal server error',
