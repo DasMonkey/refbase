@@ -738,7 +738,7 @@ app.post('/api/api-keys', async (req, res) => {
       .insert([{
         user_id: user.id,
         name,
-        key_prefix: fullKey.substring(0, 12), // refb_12345678
+        key_prefix: 'refb_' + fullKey.substring(5, 13), // Exactly 8 hex chars after refb_
         key_hash: keyHash,
         permissions,
         scopes,
@@ -931,6 +931,10 @@ app.post('/api/test-create-key', async (req, res) => {
     const fullKey = 'refb_' + keyBytes.toString('hex');
     console.log('Test endpoint - Generated key:', fullKey.substring(0, 12) + '...');
     
+    // Generate key_prefix with exactly 8 hex chars after refb_
+    const keyPrefix = 'refb_' + keyBytes.toString('hex').substring(0, 8);
+    console.log('Test endpoint - Key prefix:', keyPrefix);
+    
     // Hash key manually (no database functions)
     const keyHash = crypto.createHash('md5').update(fullKey + 'test_salt').digest('hex');
     console.log('Test endpoint - Generated hash length:', keyHash.length);
@@ -941,7 +945,7 @@ app.post('/api/test-create-key', async (req, res) => {
       .insert([{
         user_id: user.id,
         name: 'Test Key - Simple',
-        key_prefix: fullKey.substring(0, 12), // refb_12345678
+        key_prefix: keyPrefix, // Exactly 8 hex chars: refb_12345678
         key_hash: keyHash,
         permissions: ['read', 'write'],
         scopes: ['conversations', 'bugs', 'features', 'documents'],
