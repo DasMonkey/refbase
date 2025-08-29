@@ -745,7 +745,12 @@ app.post('/api/api-keys', async (req, res) => {
     
     if (insertError) {
       console.error('Database insert error:', insertError);
-      return res.status(500).json({ success: false, error: 'Failed to create API key' });
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Database insert failed',
+        details: insertError.message,
+        code: insertError.code
+      });
     }
     
     // Return the full key ONLY once - never stored or returned again
@@ -760,7 +765,11 @@ app.post('/api/api-keys', async (req, res) => {
     
   } catch (error) {
     console.error('Create API key error:', error);
-    res.status(500).json({ success: false, error: 'Internal server error' });
+    res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      details: error.message
+    });
   }
 });
 
