@@ -84,9 +84,8 @@ const authenticateWithApiKey = async (apiKey: string, req: express.Request, res:
         console.warn('Database hashing failed in auth, using server-side hashing:', hashError);
         // Fallback: Hash key server-side with MD5 to match database function
         const crypto = require('crypto');
-        // Use database name from Supabase URL to match current_database() in function
-        const dbName = process.env.SUPABASE_URL?.split('//')[1]?.split('.')[0] || 'postgres';
-        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + dbName).digest('hex');
+        // Use hardcoded 'postgres' to match current_database() in Supabase
+        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + 'postgres').digest('hex');
       } else {
         hashResult = dbHash;
       }
@@ -185,9 +184,8 @@ app.post('/debug-auth', async (req, res) => {
         console.log('Database hashing failed, using server-side hashing:', hashError);
         // Fallback: Hash key server-side with MD5 to match database function
         const crypto = require('crypto');
-        // Use database name from Supabase URL to match current_database() in function
-        const dbName = process.env.SUPABASE_URL?.split('//')[1]?.split('.')[0] || 'postgres';
-        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + dbName).digest('hex');
+        // Use hardcoded 'postgres' to match current_database() in Supabase
+        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + 'postgres').digest('hex');
         hashMethod = 'server-md5';
       } else {
         hashResult = dbHash;
@@ -1066,9 +1064,8 @@ app.post('/api/debug-auth', async (req, res) => {
         console.log('Database hashing failed, using server-side hashing:', hashError);
         // Fallback: Hash key server-side with MD5 to match database function
         const crypto = require('crypto');
-        // Use database name from Supabase URL to match current_database() in function
-        const dbName = process.env.SUPABASE_URL?.split('//')[1]?.split('.')[0] || 'postgres';
-        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + dbName).digest('hex');
+        // Use hardcoded 'postgres' to match current_database() in Supabase
+        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + 'postgres').digest('hex');
         hashMethod = 'server-md5';
       } else {
         hashResult = dbHash;
