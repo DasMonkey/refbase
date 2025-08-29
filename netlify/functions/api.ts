@@ -914,5 +914,74 @@ app.delete('/api/api-keys/:keyId', async (req, res) => {
   }
 });
 
+// DEBUG TEST ENDPOINT - Simple API key creation without complex logic
+app.post('/api/test-create-key', async (req, res) => {
+  try {
+    // Only allow JWT authentication for API key management
+    if ((req as any).authMethod !== 'jwt') {
+      return res.status(403).json({ success: false, error: 'JWT authentication required' });
+    }
+    
+    const user = (req as any).user;
+    console.log('Test endpoint - User ID:', user.id);
+    
+    // Generate simple key manually (no database functions)
+    const crypto = require('crypto');
+    const keyBytes = crypto.randomBytes(16);
+    const fullKey = 'refb_' + keyBytes.toString('hex');
+    console.log('Test endpoint - Generated key:', fullKey.substring(0, 12) + '...');
+    
+    // Hash key manually (no database functions)
+    const keyHash = crypto.createHash('md5').update(fullKey + 'test_salt').digest('hex');
+    console.log('Test endpoint - Generated hash length:', keyHash.length);
+    
+    // Simple insert without complex validation
+    const { data: keyRecord, error: insertError } = await supabase
+      .from('api_keys')
+      .insert([{
+        user_id: user.id,
+        name: 'Test Key - Simple',
+        key_prefix: fullKey.substring(0, 12), // refb_12345678
+        key_hash: keyHash,
+        permissions: ['read', 'write'],
+        scopes: ['conversations', 'bugs', 'features', 'documents'],
+        is_active: true,
+        expires_at: null,
+        created_from_ip: null,
+        user_agent: 'test'
+      }])
+      .select('id, name, key_prefix, permissions, scopes, expires_at, created_at')
+      .single();
+    
+    if (insertError) {
+      console.error('Test endpoint - Database insert error:', insertError);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Database insert failed',
+        details: insertError.message
+      });
+    }
+    
+    console.log('Test endpoint - Success! Created key record:', keyRecord.id);
+    
+    res.json({ 
+      success: true, 
+      data: {
+        key: fullKey,
+        ...keyRecord,
+        message: 'Test API key created successfully!'
+      }
+    });
+    
+  } catch (error) {
+    console.error('Test endpoint - Error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Test endpoint failed',
+      details: error.message
+    });
+  }
+});
+
 // Export the serverless function
 export const handler = serverless(app);
