@@ -82,9 +82,11 @@ const authenticateWithApiKey = async (apiKey: string, req: express.Request, res:
       
       if (hashError || !dbHash) {
         console.warn('Database hashing failed in auth, using server-side hashing:', hashError);
-        // Fallback: Hash key server-side with MD5 to match key creation
+        // Fallback: Hash key server-side with MD5 to match database function
         const crypto = require('crypto');
-        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + process.env.SUPABASE_URL).digest('hex');
+        // Use database name from Supabase URL to match current_database() in function
+        const dbName = process.env.SUPABASE_URL?.split('//')[1]?.split('.')[0] || 'postgres';
+        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + dbName).digest('hex');
       } else {
         hashResult = dbHash;
       }
@@ -181,9 +183,11 @@ app.post('/debug-auth', async (req, res) => {
       
       if (hashError || !dbHash) {
         console.log('Database hashing failed, using server-side hashing:', hashError);
-        // Fallback: Hash key server-side with MD5 to match key creation
+        // Fallback: Hash key server-side with MD5 to match database function
         const crypto = require('crypto');
-        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + process.env.SUPABASE_URL).digest('hex');
+        // Use database name from Supabase URL to match current_database() in function
+        const dbName = process.env.SUPABASE_URL?.split('//')[1]?.split('.')[0] || 'postgres';
+        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + dbName).digest('hex');
         hashMethod = 'server-md5';
       } else {
         hashResult = dbHash;
@@ -749,7 +753,9 @@ app.post('/api/api-keys', async (req, res) => {
     const keyBytes = crypto.randomBytes(16);
     const fullKey = 'refb_' + keyBytes.toString('hex');
     const keyPrefix = 'refb_' + keyBytes.toString('hex').substring(0, 8);
-    const keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_' + process.env.SUPABASE_URL).digest('hex');
+    // Use database name from Supabase URL to match current_database() in function
+    const dbName = process.env.SUPABASE_URL?.split('//')[1]?.split('.')[0] || 'postgres';
+    const keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_' + dbName).digest('hex');
     
     console.log('Main endpoint - Generated key prefix:', keyPrefix);
     
@@ -1058,9 +1064,11 @@ app.post('/api/debug-auth', async (req, res) => {
       
       if (hashError || !dbHash) {
         console.log('Database hashing failed, using server-side hashing:', hashError);
-        // Fallback: Hash key server-side with MD5 to match key creation
+        // Fallback: Hash key server-side with MD5 to match database function
         const crypto = require('crypto');
-        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + process.env.SUPABASE_URL).digest('hex');
+        // Use database name from Supabase URL to match current_database() in function
+        const dbName = process.env.SUPABASE_URL?.split('//')[1]?.split('.')[0] || 'postgres';
+        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + dbName).digest('hex');
         hashMethod = 'server-md5';
       } else {
         hashResult = dbHash;
