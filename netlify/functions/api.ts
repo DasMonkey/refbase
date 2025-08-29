@@ -666,7 +666,19 @@ app.post('/api/api-keys', async (req, res) => {
     
     console.log('Main endpoint - Generated key prefix:', keyPrefix);
     
-    // Simple insert (same as working debug endpoint)
+    // Parse IP address correctly (take first IP from x-forwarded-for)
+    let clientIp = null;
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (forwardedFor) {
+      // Take the first IP from the comma-separated list
+      clientIp = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor.split(',')[0].trim();
+    } else {
+      clientIp = req.connection?.remoteAddress || null;
+    }
+    
+    console.log('Main endpoint - Client IP:', clientIp);
+    
+    // Simple insert with proper IP handling
     const { data: keyRecord, error: insertError } = await supabase
       .from('api_keys')
       .insert([{
@@ -678,8 +690,8 @@ app.post('/api/api-keys', async (req, res) => {
         scopes: ['conversations', 'bugs', 'features', 'documents'],
         is_active: true,
         expires_at: null,
-        created_from_ip: null,
-        user_agent: 'main-endpoint-fixed'
+        created_from_ip: clientIp,
+        user_agent: req.headers['user-agent'] || 'main-endpoint-fixed'
       }])
       .select('id, name, key_prefix, permissions, scopes, expires_at, created_at')
       .single();
