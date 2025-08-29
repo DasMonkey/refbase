@@ -119,7 +119,10 @@ function App() {
   };
 
   const handleProjectSelect = (project: Project) => {
-    setActiveProject(project);
+    // Prevent unnecessary re-renders if the same project is selected
+    if (activeProject?.id !== project.id) {
+      setActiveProject(project);
+    }
   };
 
   const WelcomeScreen = () => (
@@ -282,35 +285,19 @@ function App() {
       />
 
       {/* Main Content */}
-      <AnimatePresence mode="wait">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {activeProject ? (
-          <motion.div
+          <ProjectWorkspace 
             key={activeProject.id}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-            className="flex-1 flex flex-col overflow-hidden"
-          >
-            <ProjectWorkspace 
-              project={activeProject}
-              onAiChatStateChange={handleAiChatStateChange}
-              forceShowAiChat={forceShowAiChat}
-              onForceShowAiChatChange={handleForceShowAiChatChange}
-            />
-          </motion.div>
+            project={activeProject}
+            onAiChatStateChange={handleAiChatStateChange}
+            forceShowAiChat={forceShowAiChat}
+            onForceShowAiChatChange={handleForceShowAiChatChange}
+          />
         ) : (
-          <motion.div
-            key="welcome"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex-1"
-          >
-            <WelcomeScreen />
-          </motion.div>
+          <WelcomeScreen />
         )}
-      </AnimatePresence>
+      </div>
 
       {/* Create Project Modal */}
       <CreateProjectModal

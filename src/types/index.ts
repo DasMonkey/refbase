@@ -106,6 +106,26 @@ export interface CalendarEvent {
   attendees?: string[];
 }
 
+export interface ProjectTracker {
+  id: string;
+  projectId: string;
+  userId: string;
+  title: string;
+  description?: string;
+  type: 'project' | 'feature' | 'bug';
+  startDate: Date;
+  endDate: Date;
+  status: 'not_started' | 'in_progress' | 'completed';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  linkedItems?: {
+    taskIds?: string[];
+    featureIds?: string[];
+    bugIds?: string[];
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface FileItem {
   id: string;
   projectId: string;

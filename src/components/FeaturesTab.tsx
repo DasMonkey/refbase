@@ -73,16 +73,11 @@ const featureFileTypes = [
 ];
 
 export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
-  const { features, featureFiles, createFeature, updateFeature, deleteFeature, createFeatureFile, updateFeatureFile, deleteFeatureFile, tasks, createTask, updateTask, deleteTask } = useSupabaseProjects();
+  const { features, featureFiles, createFeature, updateFeature, deleteFeature, createFeatureFile, updateFeatureFile, deleteFeatureFile, tasks, createTask, updateTask, deleteTask, loading } = useSupabaseProjects();
   const { isDark } = useTheme();
-  const [selectedFeature, setSelectedFeature] = useState<Feature | null>(() => {
-    const savedFeatureId = localStorage.getItem(`selectedFeature_${project.id}`);
-    if (savedFeatureId) {
-      // We'll set this properly after features are loaded
-      return null;
-    }
-    return null;
-  });
+  const [selectedFeature, setSelectedFeature] = useState<Feature | null>(null);
+  const [isProjectSwitching, setIsProjectSwitching] = useState(false);
+  const currentProjectRef = useRef(project.id);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newFeatureTitle, setNewFeatureTitle] = useState('');
   const [newFeatureType, setNewFeatureType] = useState<Feature['type']>('custom');
@@ -256,16 +251,34 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
   }, [featureTasks]);
 
 
-  // Restore selected feature when features are loaded
+  // Handle project switching
   useEffect(() => {
-    const savedFeatureId = localStorage.getItem(`selectedFeature_${project.id}`);
-    if (savedFeatureId && features.length > 0 && !selectedFeature) {
-      const feature = features.find(f => f.id === savedFeatureId && f.projectId === project.id);
-      if (feature) {
-        setSelectedFeature(feature);
+    if (currentProjectRef.current !== project.id) {
+      setIsProjectSwitching(true);
+      setSelectedFeature(null);
+      setSelectedFeatureFile(null);
+      currentProjectRef.current = project.id;
+      
+      const timer = setTimeout(() => {
+        setIsProjectSwitching(false);
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [project.id]);
+
+  // Restore selected feature when features are loaded and project is stable
+  useEffect(() => {
+    if (!loading && !isProjectSwitching && features.length > 0) {
+      const savedFeatureId = localStorage.getItem(`selectedFeature_${project.id}`);
+      if (savedFeatureId && !selectedFeature) {
+        const feature = features.find(f => f.id === savedFeatureId && f.projectId === project.id);
+        if (feature) {
+          setSelectedFeature(feature);
+        }
       }
     }
-  }, [features, project.id, selectedFeature]);
+  }, [features, project.id, selectedFeature, loading, isProjectSwitching]);
 
   // Save selectedFeature to localStorage whenever it changes
   useEffect(() => {

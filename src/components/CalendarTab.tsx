@@ -1,10 +1,14 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Clock, Edit3, Trash2, User, AlertCircle, Loader2 } from 'lucide-react';
-import { Project, CalendarEvent } from '../types';
+import { Project, CalendarEvent, ProjectTracker } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { useEvents, useEventOperations } from '../hooks/useEvents';
+import { useTrackerOperations } from '../hooks/useProjectTrackers';
+import { useTimelineTrackers } from '../hooks/useTimelineTrackers';
 import { UpcomingEvents } from './UpcomingEvents';
+import { SubTabNavigation, CalendarMode } from './SubTabNavigation';
+import { ProjectTrackerModal } from './ProjectTrackerModal';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isToday } from 'date-fns';
 
 interface CalendarTabProps {
@@ -289,6 +293,11 @@ const EventModal: React.FC<{
 
 export const CalendarTab: React.FC<CalendarTabProps> = ({ project }) => {
   const { isDark } = useTheme();
+  
+  // Mode switching state
+  const [currentMode, setCurrentMode] = useState<CalendarMode>('calendar');
+  
+  // Shared calendar state (preserved across modes)
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showEventModal, setShowEventModal] = useState(false);
@@ -314,6 +323,28 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ project }) => {
   }, [refreshEvents]);
   
   const { createEvent, updateEvent, deleteEvent, loading: operationLoading, error: operationError } = useEventOperations(refreshAllEvents);
+
+  // Project tracker state (for planner mode)
+  const [showTrackerModal, setShowTrackerModal] = useState(false);
+  const [selectedTracker, setSelectedTracker] = useState<ProjectTracker | null>(null);
+  
+  // Drag state for timeline scrolling
+  const [dragStart, setDragStart] = useState({ x: 0, date: new Date() });
+  const dragRef = useRef<HTMLDivElement>(null);
+  
+  // Timeline operation state for optimistic updates
+  const [pendingOperations, setPendingOperations] = useState<Map<string, ProjectTracker>>(new Map());
+  const [operationErrors, setOperationErrors] = useState<Map<string, string>>(new Map());
+  
+  const [isDragging, setIsDragging] = useState(false);
+  
+
+  // Project tracker management hooks - optimized timeline loading (loads ~6 months, expands as needed)
+  const { trackers, loading: trackersLoading, error: trackersError, refreshTrackers } = useTimelineTrackers(
+    project.id,
+    currentDate
+  );
+  const { createTracker, updateTracker, deleteTracker, loading: trackerOperationLoading } = useTrackerOperations(refreshTrackers);
 
   // Memoize calendar calculations for performance
   const calendarData = useMemo(() => {
@@ -387,6 +418,150 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ project }) => {
     }
   }, [currentDate]);
 
+  // Project tracker handlers
+  const handleTrackerClick = useCallback((tracker: ProjectTracker) => {
+    setSelectedTracker(tracker);
+  }, []);
+
+  const handleEditTracker = useCallback((tracker: ProjectTracker) => {
+    setSelectedTracker(tracker);
+    setShowTrackerModal(true);
+  }, []);
+
+  const handleDeleteTracker = useCallback(async (trackerId: string) => {
+    if (window.confirm('Are you sure you want to delete this tracker?')) {
+      try {
+        await deleteTracker(trackerId);
+      } catch (error) {
+        console.error('Failed to delete tracker:', error);
+      }
+    }
+  }, [deleteTracker]);
+
+  // Remove unused handleAddTracker - adding trackers is handled through the timeline interface
+
+
+
+  // Create optimistic trackers with pending operations applied (moved up to avoid hoisting issues)
+  const optimisticTrackers = useMemo(() => {
+    return trackers.map(tracker => {
+      const pendingUpdate = pendingOperations.get(tracker.id);
+      return pendingUpdate ? { ...tracker, ...pendingUpdate } : tracker;
+    });
+  }, [trackers, pendingOperations]);
+
+  // Batch operation handlers
+
+
+
+
+  // Drag and drop handlers
+
+
+
+  // Drag handlers for smooth timeline scrolling
+  const handleTimelineMouseDown = useCallback((e: React.MouseEvent) => {
+    if (currentMode !== 'planner') return;
+    
+    // Don't start dragging if clicking on a tracker bar
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-tracker-bar]')) {
+      return;
+    }
+    
+    setIsDragging(true);
+    setDragStart({ 
+      x: e.clientX, 
+      date: new Date(currentDate) 
+    });
+    
+    // Prevent text selection
+    e.preventDefault();
+  }, [currentMode, currentDate]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging || currentMode !== 'planner') return;
+    
+    const deltaX = e.clientX - dragStart.x;
+    // Get timeline container width for responsive calculation
+    const timelineElement = dragRef.current?.closest('.min-w-max');
+    const timelineWidth = timelineElement ? timelineElement.clientWidth - 192 : 840; // Subtract left column width
+    const pixelsPerDay = timelineWidth / 14; // 14 days visible
+    const daysToMove = Math.round(deltaX / pixelsPerDay);
+    
+    if (Math.abs(daysToMove) >= 1) {
+      const newDate = new Date(dragStart.date);
+      newDate.setDate(dragStart.date.getDate() - daysToMove);
+      setCurrentDate(newDate);
+      
+      // Reset drag start to prevent accumulating small movements
+      setDragStart({
+        x: e.clientX,
+        date: new Date(newDate)
+      });
+    }
+  }, [isDragging, dragStart, currentMode]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  // Global mouse events for smooth dragging
+  React.useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  // Cleanup effects for mode switching
+  React.useEffect(() => {
+    // Clear timeline-specific state when switching away from planner mode
+    if (currentMode !== 'planner') {
+      setPendingOperations(new Map());
+      setOperationErrors(new Map());
+      setSelectedTracker(null);
+    }
+  }, [currentMode]);
+
+  // Cleanup pending operations on tracker data refresh
+  React.useEffect(() => {
+    // Remove pending operations for trackers that no longer exist
+    setPendingOperations(prev => {
+      const trackerIds = new Set(trackers.map(t => t.id));
+      const filtered = new Map();
+      prev.forEach((value, key) => {
+        if (trackerIds.has(key)) {
+          filtered.set(key, value);
+        }
+      });
+      return filtered;
+    });
+
+    // Clear operation errors for trackers that no longer exist
+    setOperationErrors(prev => {
+      const trackerIds = new Set(trackers.map(t => t.id));
+      const filtered = new Map();
+      prev.forEach((value, key) => {
+        if (trackerIds.has(key)) {
+          filtered.set(key, value);
+        }
+      });
+      return filtered;
+    });
+  }, [trackers]);
+
+
+
   // Error display component
   const ErrorDisplay = ({ error }: { error: string }) => (
     <div className={`p-4 rounded-lg border ${isDark ? 'bg-red-900/20 border-red-800 text-red-200' : 'bg-red-50 border-red-200 text-red-700'}`}>
@@ -399,7 +574,16 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ project }) => {
 
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
+    <div className="flex flex-col h-full w-full overflow-hidden">
+      {/* Sub-tab Navigation */}
+      <SubTabNavigation 
+        currentMode={currentMode} 
+        onModeChange={setCurrentMode} 
+      />
+      
+      {/* Calendar Mode (existing functionality) */}
+      {currentMode === 'calendar' && (
+        <div className="flex h-full w-full overflow-hidden">
       {/* Left Side - Calendar */}
       <div className={`w-96 border-r flex flex-col flex-shrink-0`} style={{
         backgroundColor: isDark ? '#111111' : '#f8fafc',
@@ -660,6 +844,360 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ project }) => {
           updateEvent={updateEvent}
           operationLoading={operationLoading}
           onSuccess={refreshAllEvents}
+        />
+      )}
+        </div>
+      )}
+      
+      {/* Project Planner Mode - SIMPLIFIED */}
+      {currentMode === 'planner' && (
+        <div className="flex h-full w-full overflow-hidden">
+          {/* Timeline View */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className={`px-6 py-4 border-b flex items-center justify-between`} style={{
+              backgroundColor: isDark ? '#111111' : '#ffffff',
+              borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
+            }}>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <button onClick={() => navigateMonth('prev')} className={`p-2 rounded-lg ${isDark ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+                    <ChevronLeft size={16} />
+                  </button>
+                  <h3 className={`text-lg font-semibold text-center w-40 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {format(currentDate, 'MMMM yyyy')}
+                  </h3>
+                  <button onClick={() => navigateMonth('next')} className={`p-2 rounded-lg ${isDark ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+                <button onClick={() => setCurrentDate(new Date())} className="px-3 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white">
+                  Today
+                </button>
+              </div>
+              
+              <button onClick={() => { setSelectedTracker(null); setShowTrackerModal(true); }} className={`flex items-center px-3 py-2 text-sm font-medium border ${isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'}`}>
+                <Plus size={14} className="mr-1" />
+                Add Tracker
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className={`flex-1 relative overflow-x-auto ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}>
+              {trackersError && (
+                <div className="p-4">
+                  <ErrorDisplay error={trackersError} />
+                </div>
+              )}
+
+              {trackersLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+                    <p className={isDark ? 'text-gray-400' : 'text-gray-500'}>Loading trackers...</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="min-w-max">
+                  {/* Date Headers */}
+                  <div className={`border-b sticky top-0 z-10 flex`} style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0', backgroundColor: isDark ? '#0a0a0a' : '#f8fafc', height: '76.8px' }}>
+                    <div className="w-48 p-4 border-r h-full flex items-center" style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
+                      <div className={`text-sm font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Timeline Tracking</div>
+                    </div>
+                    <div 
+                      className={`flex flex-1 h-full ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                      onMouseDown={handleTimelineMouseDown}
+                      ref={dragRef}
+                    >
+                    {Array.from({ length: 14 }, (_, i) => {
+                      // Center 14 days around current date (-7 to +6)
+                      const date = new Date(currentDate);
+                      date.setDate(currentDate.getDate() - 7 + i);
+                      const isTodayDate = isToday(date);
+                      const isWeekend = date.getDay() === 0 || date.getDay() === 6; // Sunday (0) or Saturday (6)
+                      
+                      let bgColor = '';
+                      if (isTodayDate) {
+                        bgColor = isDark ? 'bg-blue-900/50' : 'bg-blue-50';
+                      } else if (isWeekend) {
+                        bgColor = isDark ? 'bg-gray-800/30' : 'bg-gray-100/50';
+                      }
+                      
+                      return (
+                        <div key={i} className={`flex-1 min-w-[60px] h-full p-2 flex flex-col justify-center border-r relative ${bgColor}`} style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
+                          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{format(date, 'EEE')}</div>
+                          <div className={`text-xs ${isTodayDate ? (isDark ? 'text-blue-300' : 'text-blue-600') : (isDark ? 'text-white' : 'text-gray-900')}`}>{format(date, 'MMM d')}</div>
+                          
+                          {/* Today red line with extended height to avoid gaps */}
+                          {isTodayDate && (() => {
+                            const now = new Date();
+                            const currentHour = now.getHours();
+                            const currentMinute = now.getMinutes();
+                            const timeProgress = (currentHour + currentMinute / 60) / 24; // 0 to 1
+                            
+                            return (
+                              <div 
+                                className="absolute w-0.5 bg-red-500 pointer-events-none z-10"
+                                style={{ 
+                                  left: `${timeProgress * 100}%`,
+                                  top: 0,
+                                  height: '200vh' // Extend way down to cover all rows
+                                }}
+                              >
+                                <div className="absolute -top-1 -left-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      );
+                    })}
+                    </div>
+                  </div>
+
+
+                  {/* Tracker Rows */}
+                  {optimisticTrackers.length === 0 ? (
+                    <div className="flex items-center justify-center h-64">
+                      <div className="text-center">
+                        <CalendarIcon className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                        <p className={`font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>No project trackers</p>
+                        <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Use the "Add Tracker" button to create your first tracker</p>
+                      </div>
+                    </div>
+                  ) : (
+                    optimisticTrackers.map(tracker => {
+                      const startDate = new Date(tracker.startDate);
+                      const endDate = new Date(tracker.endDate);
+                      const getColor = (type: string) => type === 'project' ? 'bg-blue-500' : type === 'feature' ? 'bg-green-500' : 'bg-red-500';
+                      
+                      return (
+                        <div key={tracker.id} className={`flex border-b ${selectedTracker?.id === tracker.id ? (isDark ? 'bg-gray-800/50' : 'bg-blue-50/50') : ''}`} style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
+                          <div className="w-48 p-4 border-r flex items-center" style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
+                            <div className="flex-1 min-w-0">
+                              <div className={`text-sm font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{tracker.title}</div>
+                              <div className="flex items-center space-x-1 mt-1">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${tracker.type === 'project' ? 'bg-blue-100 text-blue-800' : tracker.type === 'feature' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{tracker.type}</span>
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${tracker.priority === 'critical' ? 'bg-red-100 text-red-800' : tracker.priority === 'high' ? 'bg-orange-100 text-orange-800' : tracker.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>{tracker.priority}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div 
+                            className={`flex-1 relative flex ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                            onMouseDown={handleTimelineMouseDown}
+                            style={{ height: '76.8px' }}
+                          >
+                            {Array.from({ length: 14 }, (_, i) => {
+                              const date = new Date(currentDate);
+                              date.setDate(currentDate.getDate() - 7 + i);
+                              const dayDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                              const isInRange = dayDate >= startDate && dayDate <= endDate;
+                              const isStart = dayDate.getTime() === startDate.getTime();
+                              const isEnd = dayDate.getTime() === endDate.getTime();
+                              const isWeekend = date.getDay() === 0 || date.getDay() === 6; // Sunday (0) or Saturday (6)
+                              const isTodayDate = isToday(date);
+                              
+                              let bgColor = '';
+                              if (isTodayDate) {
+                                bgColor = isDark ? 'bg-blue-900/20' : 'bg-blue-50/30';
+                              } else if (isWeekend) {
+                                bgColor = isDark ? 'bg-gray-800/20' : 'bg-gray-100/30';
+                              }
+                              
+                              return (
+                                <div key={i} className={`flex-1 min-w-[60px] h-full flex items-center relative ${bgColor}`}>
+                                  {isInRange && (
+                                    <div
+                                      data-tracker-bar
+                                      className={`h-8 w-full ${getColor(tracker.type)} text-white text-xs font-medium flex items-center justify-center cursor-pointer ${isStart && isEnd ? 'rounded-lg' : isStart ? 'rounded-l-lg' : isEnd ? 'rounded-r-lg' : ''}`}
+                                      onClick={() => handleTrackerClick(tracker)}
+                                    >
+                                      {isStart && <span className="px-2 truncate">{tracker.title}</span>}
+                                      {isEnd && tracker.status === 'completed' && <div className="ml-auto text-white text-xs">✓</div>}
+                                      {isEnd && tracker.status === 'in_progress' && <div className="ml-auto w-2 h-2 bg-white rounded-full animate-pulse"></div>}
+                                    </div>
+                                  )}
+                                  
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Sidebar - Tracker Details */}
+            <div className={`w-80 border-l flex flex-col flex-shrink-0`} style={{
+            backgroundColor: isDark ? '#111111' : '#f8fafc',
+            borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
+          }}>
+            <div className={`p-4 border-b`} style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
+              <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                Tracker Details
+              </h3>
+            </div>
+
+            <div className={`flex-1 overflow-y-auto p-4 space-y-4 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}>
+              {selectedTracker ? (
+                <div>
+                  <div className={`p-4 rounded-xl border`} style={{
+                    backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
+                    borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
+                  }}>
+                    <h4 className={`font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      {selectedTracker.title}
+                    </h4>
+                    
+                    <div className="space-y-2 text-sm">
+                      <div className={`flex justify-between ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        <span>Type:</span>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          selectedTracker.type === 'project' ? 'bg-blue-100 text-blue-800' :
+                          selectedTracker.type === 'feature' ? 'bg-green-100 text-green-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {selectedTracker.type}
+                        </span>
+                      </div>
+                      
+                      <div className={`flex justify-between ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        <span>Status:</span>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          selectedTracker.status === 'completed' ? 'bg-green-100 text-green-800' :
+                          selectedTracker.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {selectedTracker.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                      
+                      <div className={`flex justify-between ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        <span>Priority:</span>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          selectedTracker.priority === 'critical' ? 'bg-red-100 text-red-800' :
+                          selectedTracker.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                          selectedTracker.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {selectedTracker.priority}
+                        </span>
+                      </div>
+                      
+                      <div className={`flex justify-between ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        <span>Start:</span>
+                        <span>{format(new Date(selectedTracker.startDate), 'MMM d, yyyy')}</span>
+                      </div>
+                      
+                      <div className={`flex justify-between ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        <span>End:</span>
+                        <span>{format(new Date(selectedTracker.endDate), 'MMM d, yyyy')}</span>
+                      </div>
+                    </div>
+                    
+                    {selectedTracker.description && (
+                      <div className="mt-3">
+                        <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                          {selectedTracker.description}
+                        </p>
+                      </div>
+                    )}
+                    
+                    <div className="flex space-x-2 mt-4">
+                      <button
+                        onClick={() => handleEditTracker(selectedTracker)}
+                        className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${isDark
+                          ? 'bg-gray-800 hover:bg-gray-700 text-gray-200'
+                          : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200'
+                        }`}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTracker(selectedTracker.id)}
+                        className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white transition-all duration-200"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className={`text-center py-8 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <p>Select a tracker to view details</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Operation Error Notifications */}
+      <AnimatePresence>
+        {operationErrors.size > 0 && (
+          <div className="fixed bottom-4 right-4 z-50 space-y-2">
+            {Array.from(operationErrors.entries()).map(([trackerId, error]) => {
+            const tracker = trackers.find(t => t.id === trackerId);
+            return (
+              <motion.div
+                key={trackerId}
+                initial={{ opacity: 0, x: 100 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 100 }}
+                className={`p-4 rounded-lg shadow-lg border max-w-sm ${
+                  isDark 
+                    ? 'bg-red-900 border-red-700 text-red-100' 
+                    : 'bg-red-50 border-red-200 text-red-800'
+                }`}
+              >
+                <div className="flex items-start space-x-3">
+                  <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm">
+                      {tracker ? tracker.title : 'Unknown Tracker'}
+                    </div>
+                    <div className="text-sm opacity-90 mt-1">
+                      {error}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setOperationErrors(prev => {
+                        const newErrors = new Map(prev);
+                        newErrors.delete(trackerId);
+                        return newErrors;
+                      });
+                    }}
+                    className={`text-current opacity-60 hover:opacity-100 transition-opacity`}
+                  >
+                    ×
+                  </button>
+                </div>
+              </motion.div>
+            );
+          })}
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Project Tracker Modal */}
+      {showTrackerModal && (
+        <ProjectTrackerModal
+          selectedTracker={selectedTracker}
+          selectedDate={selectedDate}
+          isDark={isDark}
+          project={project}
+          onClose={() => {
+            setShowTrackerModal(false);
+            setSelectedTracker(null);
+          }}
+          createTracker={createTracker}
+          updateTracker={updateTracker}
+          operationLoading={trackerOperationLoading}
+          onSuccess={refreshTrackers}
         />
       )}
     </div>

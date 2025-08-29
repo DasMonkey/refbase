@@ -38,16 +38,9 @@ const documentTypes = [
 ];
 
 export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
-  const { documents, createDocument, updateDocument, deleteDocument } = useSupabaseProjects();
+  const { documents, createDocument, updateDocument, deleteDocument, loading } = useSupabaseProjects();
   const { isDark } = useTheme();
-  const [selectedDoc, setSelectedDoc] = useState<Document | null>(() => {
-    const savedDocId = localStorage.getItem(`selectedDocument_${project.id}`);
-    if (savedDocId) {
-      // We'll set this properly after documents are loaded
-      return null;
-    }
-    return null;
-  });
+  const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState('');
   const [newDocType, setNewDocType] = useState<Document['type']>('custom');
@@ -56,7 +49,9 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
   const [showFilterPopup, setShowFilterPopup] = useState(false);
   const [sortBy, setSortBy] = useState<'name' | 'created' | 'updated'>('created');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [isProjectSwitching, setIsProjectSwitching] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const currentProjectRef = useRef(project.id);
 
   // Check if filter is active (not default)
   const isFilterActive = sortBy !== 'created' || sortOrder !== 'desc';
@@ -94,16 +89,37 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
       return sortOrder === 'asc' ? comparison : -comparison;
     });
 
-  // Restore selected document when documents are loaded
+  // Handle project switching
   useEffect(() => {
-    const savedDocId = localStorage.getItem(`selectedDocument_${project.id}`);
-    if (savedDocId && documents.length > 0 && !selectedDoc) {
-      const doc = documents.find(d => d.id === savedDocId && d.projectId === project.id);
-      if (doc) {
-        setSelectedDoc(doc);
+    // Detect if project has changed
+    if (currentProjectRef.current !== project.id) {
+      setIsProjectSwitching(true);
+      setSelectedDoc(null);
+      setSearchQuery('');
+      setShowFilterPopup(false);
+      currentProjectRef.current = project.id;
+      
+      // Clear project switching state after a short delay
+      const timer = setTimeout(() => {
+        setIsProjectSwitching(false);
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [project.id]);
+
+  // Restore selected document when documents are loaded and project is stable
+  useEffect(() => {
+    if (!loading && !isProjectSwitching && documents.length > 0) {
+      const savedDocId = localStorage.getItem(`selectedDocument_${project.id}`);
+      if (savedDocId && !selectedDoc) {
+        const doc = documents.find(d => d.id === savedDocId && d.projectId === project.id);
+        if (doc) {
+          setSelectedDoc(doc);
+        }
       }
     }
-  }, [documents, project.id, selectedDoc]);
+  }, [documents, project.id, selectedDoc, loading, isProjectSwitching]);
 
   // Save selectedDoc to localStorage whenever it changes
   useEffect(() => {
@@ -298,62 +314,22 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
         </div>
 
         <div className={`flex-1 overflow-y-auto px-3 pb-3 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}>
-          <div className="space-y-1">
-            {filteredDocs.map((doc) => (
-              <div
-                key={doc.id}
-                className={`relative group transition-all duration-100 border-l-2 ${
-                  selectedDoc?.id === doc.id
-                    ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
-                    : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
-                }`}
-              >
-                <motion.button
-                  onClick={() => {
-                    setSelectedDoc(doc);
-                  }}
-                  className="w-full text-left p-3 pr-10"
-                  whileHover={{ x: 8 }}
-                  transition={{ duration: 0.08, ease: "easeOut" }}
-                >
+          {/* Loading State */}
+          {(loading || isProjectSwitching) ? (
+            <div className="space-y-1">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className={`p-3 border-l-2 border-l-transparent animate-pulse`}>
                   <div className="flex items-center space-x-3">
-                    <FileText size={14} className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
-                    <div className="min-w-0 flex-1">
-                      <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'} truncate`}>{doc.title}</div>
-                      <div className="flex items-center space-x-2 mt-0.5">
-                        <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} capitalize`}>
-                          {doc.type ? doc.type.replace('-', ' ') : 'Document'}
-                        </span>
-                        <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
-                        <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                          {new Date(doc.updatedAt).toLocaleDateString()}
-                        </span>
-                      </div>
+                    <div className={`w-4 h-4 rounded ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}></div>
+                    <div className="flex-1">
+                      <div className={`h-4 rounded mb-1 ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`} style={{ width: `${60 + i * 20}%` }}></div>
+                      <div className={`h-3 rounded ${isDark ? 'bg-gray-800' : 'bg-gray-100'}`} style={{ width: '40%' }}></div>
                     </div>
                   </div>
-                </motion.button>
-                
-                {/* Inline document delete button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedDoc(doc); // Select document first to ensure it's set for deletion
-                    handleDeleteDocument();
-                  }}
-                  className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 rounded transition-all duration-200 opacity-0 group-hover:opacity-100 ${
-                    isDark 
-                      ? 'hover:bg-red-900/50 text-red-400 hover:text-red-300' 
-                      : 'hover:bg-red-100 text-red-500 hover:text-red-600'
-                  }`}
-                  title="Delete Document"
-                >
-                  <FiTrash size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {filteredDocs.length === 0 && (
+                </div>
+              ))}
+            </div>
+          ) : filteredDocs.length === 0 ? (
             <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
               <FileText className={`w-8 h-8 mx-auto mb-3 ${isDark ? 'text-gray-600' : 'text-gray-400'}`} />
               {searchQuery ? (
@@ -367,6 +343,61 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
                   <p className="text-xs">Create your first document to get started</p>
                 </>
               )}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {filteredDocs.map((doc) => (
+                <div
+                  key={doc.id}
+                  className={`relative group transition-all duration-100 border-l-2 ${
+                    selectedDoc?.id === doc.id
+                      ? `${isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400'}`
+                      : `hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'} border-l-transparent`
+                  }`}
+                >
+                  <motion.button
+                    onClick={() => {
+                      setSelectedDoc(doc);
+                    }}
+                    className="w-full text-left p-3 pr-10"
+                    whileHover={{ x: 8 }}
+                    transition={{ duration: 0.08, ease: "easeOut" }}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <FileText size={14} className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'} truncate`}>{doc.title}</div>
+                        <div className="flex items-center space-x-2 mt-0.5">
+                          <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} capitalize`}>
+                            {doc.type ? doc.type.replace('-', ' ') : 'Document'}
+                          </span>
+                          <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
+                          <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                            {new Date(doc.updatedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.button>
+                  
+                  {/* Inline document delete button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedDoc(doc); // Select document first to ensure it's set for deletion
+                      handleDeleteDocument();
+                    }}
+                    className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 rounded transition-all duration-200 opacity-0 group-hover:opacity-100 ${
+                      isDark 
+                        ? 'hover:bg-red-900/50 text-red-400 hover:text-red-300' 
+                        : 'hover:bg-red-100 text-red-500 hover:text-red-600'
+                    }`}
+                    title="Delete Document"
+                  >
+                    <FiTrash size={12} />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -385,7 +416,15 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
 
       {/* Document Editor */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
-        {selectedDoc ? (
+        {(loading || isProjectSwitching) ? (
+          /* Loading State for Editor */
+          <div className={`flex-1 flex items-center justify-center`} style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
+            <div className={`text-center ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-sm">Loading documents...</p>
+            </div>
+          </div>
+        ) : selectedDoc ? (
           <>
             {/* Document Header */}
             <div className={`px-6 py-4 border-b flex-shrink-0`} style={{ 

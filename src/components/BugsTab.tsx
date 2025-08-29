@@ -71,20 +71,16 @@ const statusIcons = {
 };
 
 export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) => {
-  const { bugs, createBug, updateBug, deleteBug, features, tasks, createTask, updateTask, deleteTask } = useSupabaseProjects();
+  const { bugs, createBug, updateBug, deleteBug, features, tasks, createTask, updateTask, deleteTask, loading } = useSupabaseProjects();
   const { isDark } = useTheme();
   
   // Use different localStorage keys for sub-tab vs main tab to avoid conflicts
   const storagePrefix = filterByFeatureId ? `featureBug_${filterByFeatureId}` : `selectedBug_${project.id}`;
   const subTabStorageKey = filterByFeatureId ? `featureBugSubTab_${filterByFeatureId}` : `bugSubTab_${project.id}`;
   
-  const [selectedBug, setSelectedBug] = useState<BugType | null>(() => {
-    const savedBugId = localStorage.getItem(storagePrefix);
-    if (savedBugId) {
-      return null; // Will be restored in useEffect
-    }
-    return null;
-  });
+  const [selectedBug, setSelectedBug] = useState<BugType | null>(null);
+  const [isProjectSwitching, setIsProjectSwitching] = useState(false);
+  const currentProjectRef = useRef(project.id);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newBugTitle, setNewBugTitle] = useState('');
   const [newBugType, setNewBugType] = useState<BugType['type']>('functional-bug');
@@ -202,21 +198,37 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
     localStorage.setItem(`othersBugsExpanded_${project.id}`, JSON.stringify(isOthersExpanded));
   }, [isOpenExpanded, isInProgressExpanded, isCompletedExpanded, isOthersExpanded, project.id]);
 
-  // Restore selected bug when bugs are loaded
+  // Handle project switching
   useEffect(() => {
-    const savedBugId = localStorage.getItem(storagePrefix);
-    if (savedBugId && bugs.length > 0 && !selectedBug) {
-      // For filtered bugs, ensure the bug matches the filter
-      const bug = bugs.find(b => 
-        b.id === savedBugId && 
-        b.projectId === project.id && 
-        (!filterByFeatureId || b.featureId === filterByFeatureId)
-      );
-      if (bug) {
-        setSelectedBug(bug);
+    if (!filterByFeatureId && currentProjectRef.current !== project.id) {
+      setIsProjectSwitching(true);
+      setSelectedBug(null);
+      currentProjectRef.current = project.id;
+      
+      const timer = setTimeout(() => {
+        setIsProjectSwitching(false);
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [project.id, filterByFeatureId]);
+
+  // Restore selected bug when bugs are loaded and project is stable
+  useEffect(() => {
+    if (!loading && !isProjectSwitching && bugs.length > 0) {
+      const savedBugId = localStorage.getItem(storagePrefix);
+      if (savedBugId && !selectedBug) {
+        const bug = bugs.find(b => 
+          b.id === savedBugId && 
+          b.projectId === project.id && 
+          (!filterByFeatureId || b.featureId === filterByFeatureId)
+        );
+        if (bug) {
+          setSelectedBug(bug);
+        }
       }
     }
-  }, [bugs, project.id, selectedBug, storagePrefix, filterByFeatureId]);
+  }, [bugs, project.id, selectedBug, storagePrefix, filterByFeatureId, loading, isProjectSwitching]);
 
   // Save selectedBug to localStorage whenever it changes
   useEffect(() => {

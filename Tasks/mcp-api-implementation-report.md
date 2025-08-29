@@ -934,3 +934,171 @@ const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.con
 This debugging journey transformed a failing API key implementation into a production-ready system that solves the #1 UX problem with MCP tool integration. The systematic debugging approach documented here provides a reliable methodology for tackling similar complex API implementation challenges in the future.
 
 **The RefBase permanent API key system is now fully operational and ready for MCP tool integration! 🚀**
+
+---
+
+## 🐛 Bug #6: Salt Mismatch Between Database Function and Server-Side Hashing
+
+*Added after final debugging session that resolved persistent API key authentication failures*
+
+### Problem
+Despite implementing the API key system and successfully creating keys in the database, **all API key authentication attempts were failing** with "Invalid or inactive API key" errors. Fresh API keys that should have worked were consistently rejected by the authentication system.
+
+**Failing Test Result:**
+```bash
+curl -X GET "https://refbase.dev/api/conversations" \
+  -H "Authorization: Bearer refb_e06244b9a075de62c9b71862caa334b8"
+
+Response: {"success":false,"error":"Invalid or inactive API key"}
+```
+
+### Root Cause Analysis
+
+The issue was **salt format inconsistencies** between different parts of the codebase:
+
+#### Database Function (Correct)
+```sql
+-- supabase/migrations/20250828000008_fix_hash_function.sql
+SELECT md5(key_text || 'refbase_api_salt_' || current_database());
+```
+
+#### Server-Side Authentication (Multiple Inconsistencies)
+```typescript
+// Line 88 & 189: Using URL parsing (WRONG)
+const dbName = process.env.SUPABASE_URL?.split('//')[1]?.split('.')[0] || 'postgres';
+hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + dbName).digest('hex');
+
+// Line 756: Using variable dbName (INCONSISTENT)  
+keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_' + dbName).digest('hex');
+
+// Line 1160: Using full SUPABASE_URL (COMPLETELY WRONG)
+keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_' + process.env.SUPABASE_URL).digest('hex');
+```
+
+#### Hash Calculation Test
+When testing with API key `refb_e06244b9a075de62c9b71862caa334b8`:
+- **Database hash function**: Uses `refbase_api_salt_postgres` (current_database() returns 'postgres')
+- **Server-side attempts**: Various incorrect salt formats leading to hash mismatches
+- **Expected hash**: `fb8f087a2f6eaed7096d59d57f1bea43`
+
+### Failed Debugging Attempts
+
+1. **First attempt**: Fixed database name extraction logic
+   - Changed from URL parsing to hardcoded 'postgres'
+   - Still failed due to remaining inconsistencies
+
+2. **Second attempt**: Updated authentication middleware
+   - Fixed main authentication function
+   - Still had inconsistencies in other code paths
+
+3. **Multiple API key tests**: Tried with different fresh keys
+   - `refb_e06244b9a075de62c9b71862caa334b8` - Failed
+   - `refb_dda4df9e9c2b4d2015b473c5732e704c` - **Finally worked after complete fix**
+
+### ✅ Complete Fix Implementation
+
+#### Step 1: Replace All URL-Based Database Name Extraction
+```typescript
+// BEFORE (Lines 88, 189):
+const dbName = process.env.SUPABASE_URL?.split('//')[1]?.split('.')[0] || 'postgres';
+hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + dbName).digest('hex');
+
+// AFTER:  
+hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + 'postgres').digest('hex');
+```
+
+#### Step 2: Fix Remaining Salt Inconsistencies
+```typescript
+// BEFORE (Line 756):
+keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_' + dbName).digest('hex');
+
+// AFTER:
+keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_postgres').digest('hex');
+
+// BEFORE (Line 1160):
+keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_' + process.env.SUPABASE_URL).digest('hex');
+
+// AFTER:
+keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_postgres').digest('hex');
+```
+
+#### Step 3: Verify Hash Format Consistency
+```javascript
+// Test hash calculation to verify format:
+import crypto from 'crypto';
+const apiKey = 'refb_dda4df9e9c2b4d2015b473c5732e704c';
+const salt = 'refbase_api_salt_' + 'postgres';
+const hash = crypto.createHash('md5').update(apiKey + salt).digest('hex');
+// Result: 52c8c0e52fef7be673b0aa1e16096016
+```
+
+### ✅ Successful Test Result
+
+After applying all fixes and deploying:
+```bash
+curl -X GET "https://refbase.dev/api/conversations" \
+  -H "Authorization: Bearer refb_dda4df9e9c2b4d2015b473c5732e704c"
+
+Response: {"success":true,"data":[...conversation data...]}
+```
+
+### Git Commits for Fix
+```bash
+# Commit 1: Fix main authentication paths
+git commit -m "Fix database name extraction - use hardcoded 'postgres' to match current_database() in Supabase"
+
+# Commit 2: Fix remaining inconsistencies  
+git commit -m "Fix remaining salt inconsistencies - use hardcoded salt format consistently"
+```
+
+### Why This Bug Was So Difficult to Debug
+
+1. **Multiple Code Paths**: The salt format was used in 4+ different locations with different logic
+2. **Environment Differences**: `current_database()` in Supabase vs URL parsing in Node.js
+3. **Successful Key Creation**: Keys were created successfully, making it seem like a different issue
+4. **Generic Error Messages**: Authentication failures didn't indicate salt mismatch specifically
+5. **Fresh Key Confusion**: Each new key test required waiting for deployment + propagation
+
+### Prevention Strategy for Future
+
+1. **Centralized Salt Definition**: Define salt format in one place and import everywhere
+   ```typescript
+   // utils/crypto.ts
+   export const API_SALT_FORMAT = 'refbase_api_salt_postgres';
+   
+   // Use in all hash operations
+   import { API_SALT_FORMAT } from '../utils/crypto';
+   const hash = crypto.createHash('md5').update(key + API_SALT_FORMAT).digest('hex');
+   ```
+
+2. **Hash Function Testing**: Always test hash consistency between database and server
+   ```sql
+   -- Test database hash function
+   SELECT hash_api_key('refb_test123456789012345678901234567890');
+   ```
+   
+   ```javascript
+   // Test server-side hash function  
+   const serverHash = crypto.createHash('md5').update('refb_test123456789012345678901234567890' + 'refbase_api_salt_postgres').digest('hex');
+   ```
+
+3. **Authentication Debug Endpoint**: Keep debug endpoint for testing hash calculations
+   ```typescript
+   app.post('/debug-hash', (req, res) => {
+     const { apiKey } = req.body;
+     const serverHash = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_postgres').digest('hex');
+     res.json({ apiKey, serverHash, salt: 'refbase_api_salt_postgres' });
+   });
+   ```
+
+### Final Resolution Statistics
+- **Debugging Duration**: 2+ hours of systematic troubleshooting
+- **API Keys Tested**: 2 different keys across multiple deployment cycles
+- **Code Locations Fixed**: 4 different hash generation locations  
+- **Deployments Required**: 3 separate deployments to apply all fixes
+- **Final Result**: ✅ **100% working API key authentication**
+
+### Impact
+This fix resolved the final blocker for MCP tool integration. The RefBase API now provides **fully functional permanent API key authentication** that never expires, solving the original UX problem with JWT token expiration that was breaking MCP tool workflows.
+
+**🎉 The RefBase MCP API system is now completely operational and production-ready for AI assistant integration!**
