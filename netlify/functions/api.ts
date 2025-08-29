@@ -82,10 +82,9 @@ const authenticateWithApiKey = async (apiKey: string, req: express.Request, res:
       
       if (hashError || !dbHash) {
         console.warn('Database hashing failed in auth, using server-side hashing:', hashError);
-        // Fallback: Hash key server-side
+        // Fallback: Hash key server-side with MD5 to match key creation
         const crypto = require('crypto');
-        const salt = 'refbase_api_salt_' + process.env.SUPABASE_URL;
-        hashResult = crypto.createHash('sha256').update(apiKey + salt).digest('hex');
+        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + process.env.SUPABASE_URL).digest('hex');
       } else {
         hashResult = dbHash;
       }
