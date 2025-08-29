@@ -155,6 +155,94 @@ app.get('/', (req, res) => {
   });
 });
 
+// DEBUG API KEY AUTHENTICATION ENDPOINT (NO AUTH REQUIRED)
+app.post('/debug-auth', async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    
+    if (!apiKey) {
+      return res.json({ success: false, error: 'API key required in body' });
+    }
+    
+    console.log('Debug auth - Testing key:', apiKey.substring(0, 12) + '...');
+    
+    // Validate format
+    if (!apiKey.match(/^refb_[a-f0-9]{32}$/)) {
+      return res.json({ success: false, error: 'Invalid API key format', format: apiKey.length });
+    }
+    
+    // Hash the API key for lookup (with fallback)
+    let hashResult: string;
+    let hashMethod: string;
+    
+    try {
+      const { data: dbHash, error: hashError } = await supabase
+        .rpc('hash_api_key', { key_text: apiKey });
+      
+      if (hashError || !dbHash) {
+        console.log('Database hashing failed, using server-side hashing:', hashError);
+        // Fallback: Hash key server-side with MD5 to match key creation
+        const crypto = require('crypto');
+        hashResult = crypto.createHash('md5').update(apiKey + 'refbase_api_salt_' + process.env.SUPABASE_URL).digest('hex');
+        hashMethod = 'server-md5';
+      } else {
+        hashResult = dbHash;
+        hashMethod = 'database';
+      }
+    } catch (error) {
+      console.error('API key hash error:', error);
+      return res.json({ success: false, error: 'Hash error', details: error.message });
+    }
+    
+    console.log('Hash result:', hashResult.substring(0, 12) + '...', 'Method:', hashMethod);
+    
+    // Look up the API key in database
+    const { data: keyData, error: keyError } = await supabase
+      .from('api_keys')
+      .select('id, user_id, name, key_hash, is_active, expires_at, created_at')
+      .eq('key_hash', hashResult)
+      .single();
+    
+    if (keyError) {
+      console.log('Database lookup error:', keyError);
+      return res.json({
+        success: false,
+        error: 'Database lookup failed',
+        details: keyError.message,
+        hashUsed: hashResult.substring(0, 12) + '...',
+        hashMethod
+      });
+    }
+    
+    if (!keyData) {
+      console.log('No key data found for hash:', hashResult.substring(0, 12) + '...');
+      return res.json({
+        success: false,
+        error: 'No matching key found',
+        hashUsed: hashResult.substring(0, 12) + '...',
+        hashMethod
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        found: true,
+        keyId: keyData.id,
+        name: keyData.name,
+        isActive: keyData.is_active,
+        hashMethod,
+        hashUsed: hashResult.substring(0, 12) + '...',
+        storedHash: keyData.key_hash.substring(0, 12) + '...'
+      }
+    });
+    
+  } catch (error) {
+    console.error('Debug auth error:', error);
+    res.json({ success: false, error: 'Internal error', details: error.message });
+  }
+});
+
 // CONVERSATIONS ENDPOINTS
 app.post('/api/conversations', async (req, res) => {
   try {
