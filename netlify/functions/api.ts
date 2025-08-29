@@ -753,7 +753,7 @@ app.post('/api/api-keys', async (req, res) => {
     const keyPrefix = 'refb_' + keyBytes.toString('hex').substring(0, 8);
     // Use database name from Supabase URL to match current_database() in function
     const dbName = process.env.SUPABASE_URL?.split('//')[1]?.split('.')[0] || 'postgres';
-    const keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_' + dbName).digest('hex');
+    const keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_postgres').digest('hex');
     
     console.log('Main endpoint - Generated key prefix:', keyPrefix);
     
@@ -1157,7 +1157,7 @@ app.post('/api/debug-fixed-key', async (req, res) => {
       if (hashError || !dbHash) {
         console.warn('Database hashing failed, using server-side hashing:', hashError);
         // Fallback: Hash key server-side with MD5 to match database function
-        keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_' + process.env.SUPABASE_URL).digest('hex');
+        keyHash = crypto.createHash('md5').update(fullKey + 'refbase_api_salt_postgres').digest('hex');
       } else {
         keyHash = dbHash;
       }
