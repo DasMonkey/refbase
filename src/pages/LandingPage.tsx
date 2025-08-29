@@ -1027,7 +1027,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
             </div>
           </div>
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2024 RefBase. All rights reserved. Privacy-first AI knowledge management.</p>
+            <p>&copy; 2025 RefBase. All rights reserved. Privacy-first AI knowledge management.</p>
           </div>
         </div>
       </footer>
