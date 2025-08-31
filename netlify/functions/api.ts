@@ -607,6 +607,114 @@ app.get('/api/features', async (req, res) => {
   }
 });
 
+// PROJECTS ENDPOINTS
+app.post('/api/projects', async (req, res) => {
+  try {
+    // Parse body if it's a Buffer
+    let body = req.body;
+    if (Buffer.isBuffer(req.body)) {
+      body = JSON.parse(req.body.toString());
+    }
+    
+    const { 
+      name, 
+      description, 
+      techStack = [],
+      framework,
+      language,
+      projectPath
+    } = body;
+    const user = (req as any).user;
+
+    if (!name) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required field: name' 
+      });
+    }
+
+    const projectData = {
+      name,
+      description: description || '',
+      tech_stack: techStack,
+      framework: framework || null,
+      language: language || null,
+      project_path: projectPath || null,
+      workspace_root: null, // Can be set later if needed
+      user_id: user.id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('projects')
+      .insert([projectData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Database error:', error);
+      return res.status(500).json({ success: false, error: 'Failed to save project' });
+    }
+
+    res.json({ 
+      success: true, 
+      data: { id: data.id, message: 'Project created successfully' }
+    });
+
+  } catch (error) {
+    console.error('Save project error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+app.get('/api/projects/:id', async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Project ID is required' 
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (error) {
+      console.error('Database error:', error);
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ success: false, error: 'Project not found' });
+      }
+      return res.status(500).json({ success: false, error: 'Failed to get project' });
+    }
+
+    res.json({ 
+      success: true, 
+      data: {
+        id: data.id,
+        name: data.name,
+        description: data.description,
+        techStack: data.tech_stack,
+        framework: data.framework,
+        language: data.language,
+        created_at: data.created_at,
+        updated_at: data.updated_at
+      }
+    });
+
+  } catch (error) {
+    console.error('Get project error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // DOCUMENTS ENDPOINTS
 app.post('/api/documents', async (req, res) => {
   try {

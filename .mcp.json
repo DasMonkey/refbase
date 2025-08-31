@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "refbase": {
+      "command": "node",
+      "args": ["D:\\AI\\Cursor projects\\refbase-mcp\\dist\\cli.js"],
+      "env": {
+        "REFBASE_API_URL": "https://refbase.dev/api",
+        "REFBASE_API_KEY": "refb_8fd5e1f846be29d1103301c0a965561f",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
