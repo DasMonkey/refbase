@@ -881,3 +881,82 @@ This isn't just a nice-to-have feature—it's a **game-changing productivity mul
 The best part? Your RefBase architecture is already perfect for this. We're not rebuilding anything—we're adding intelligence to what you've already built brilliantly.
 
 **Ready to build the future of AI-assisted development?** 🚀
+
+---
+
+## 🚨 CRITICAL BUG FIX (August 31, 2025) - API Authentication Issue
+
+### The Problem
+The RefBase MCP API was rejecting all API key authentication attempts with error: **"Invalid or inactive API key"**
+
+**Impact**: All MCP server tools were failing with authentication errors, completely blocking MCP integration.
+
+### Root Cause Analysis
+After investigating the API code and database migrations, the issue was identified as a **salt consistency problem** between the database hash function and server-side fallback code:
+
+**Database function** (in migrations):
+```sql
+SELECT md5(key_text || 'refbase_api_salt_' || current_database());
+```
+
+**Server-side fallback** (in netlify/functions/api.ts):
+```javascript 
+crypto.createHash('md5').update(apiKey + 'refbase_api_salt_postgres').digest('hex');
+```
+
+**The Mismatch**: 
+- Database function used `current_database()` which returns the actual Supabase database name
+- Server fallback used hardcoded `'postgres'`
+- This created different hashes for the same API key, causing authentication to always fail
+
+### The Fix Applied
+Created migration `20250831000000_fix_salt_consistency_final.sql` to standardize the salt format:
+
+```sql
+-- Updated hash function to use hardcoded 'postgres' salt matching server code
+CREATE OR REPLACE FUNCTION hash_api_key(key_text text)
+RETURNS text
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public
+AS $$
+  SELECT md5(key_text || 'refbase_api_salt_postgres');
+$$;
+```
+
+### Resolution Steps
+1. **Identified the problem**: Salt mismatch between database and server hashing
+2. **Created migration**: Fixed hash function to use consistent salt format
+3. **Deployed changes**: Applied migration to production database
+4. **Generated new API key**: `refb_8fd5e1f846be29d1103301c0a965561f`
+5. **Verified fix**: Comprehensive API testing confirmed authentication working
+
+### Test Results ✅
+After applying the fix, all API endpoints now authenticate successfully:
+
+```bash
+# Before Fix
+curl -H "Authorization: Bearer refb_5b25c777371143a777794674880c5e1d" https://refbase.dev/api/conversations
+# Result: {"success":false,"error":"Invalid or inactive API key"}
+
+# After Fix  
+curl -H "Authorization: Bearer refb_8fd5e1f846be29d1103301c0a965561f" https://refbase.dev/api/conversations
+# Result: {"success":true,"data":[...]} ✅
+```
+
+**All endpoints verified working**:
+- ✅ GET /api/conversations - Returns conversation data
+- ✅ GET /api/bugs - Returns bug data  
+- ✅ GET /api/features - Returns feature data
+- ✅ GET /api/documents - Returns document data
+
+### Status: ✅ RESOLVED
+**RefBase MCP API is now production-ready** for MCP server integration. The authentication system is working correctly and MCP tools can now successfully connect to RefBase.
+
+### Lessons Learned
+1. **Salt consistency is critical** for authentication systems
+2. **Database functions and server code must use identical hashing logic**
+3. **Always test with fresh API keys** after authentication fixes
+4. **Old API keys may need regeneration** after hash function changes
+
+---

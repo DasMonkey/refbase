@@ -248,14 +248,20 @@ app.post('/debug-auth', async (req, res) => {
 // CONVERSATIONS ENDPOINTS
 app.post('/api/conversations', async (req, res) => {
   try {
+    console.log('POST /api/conversations - Starting request');
+    
     // Parse body if it's a Buffer
     let body = req.body;
     if (Buffer.isBuffer(req.body)) {
       body = JSON.parse(req.body.toString());
     }
     
+    console.log('Request body:', body);
+    
     const { title, messages, tags = [], projectContext } = body;
     const user = (req as any).user;
+    
+    console.log('User:', user ? { id: user.id, email: user.email } : 'No user');
 
     // Validate required fields
     if (!title || !messages) {
@@ -271,9 +277,8 @@ app.post('/api/conversations', async (req, res) => {
       tags,
       project_context: projectContext,
       user_id: user.id,
-      source: 'mcp',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      source: 'mcp'
+      // Remove manual timestamps - let database handle defaults
     };
 
     const { data, error } = await supabase
@@ -284,7 +289,12 @@ app.post('/api/conversations', async (req, res) => {
 
     if (error) {
       console.error('Database error:', error);
-      return res.status(500).json({ success: false, error: 'Failed to save conversation' });
+      console.error('Data being inserted:', conversationData);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to save conversation',
+        details: error.message || 'Unknown database error'
+      });
     }
 
     res.json({ 
