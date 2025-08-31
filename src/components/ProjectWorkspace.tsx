@@ -20,6 +20,7 @@ import { DocumentsTab } from './DocumentsTab';
 import { TasksTab } from './TasksTab';
 import { FeaturesTab } from './FeaturesTab';
 import { BugsTab } from './BugsTab';
+import { ConversationsTab } from './ConversationsTab';
 import { CalendarTab } from './CalendarTab';
 import { FilesTab } from './FilesTab';
 import { ChatTab } from './ChatTab';
@@ -38,9 +39,10 @@ const tabs = [
   { id: 'tasks' as TabType, label: 'Tasks', icon: CheckSquare, shortcut: '3' },
   { id: 'features' as TabType, label: 'Features', icon: Lightbulb, shortcut: '4' },
   { id: 'bugs' as TabType, label: 'Bugs', icon: Bug, shortcut: '5' },
-  { id: 'calendar' as TabType, label: 'Calendar', icon: Calendar, shortcut: '6' },
-  { id: 'files' as TabType, label: 'Files', icon: FolderOpen, shortcut: '7' },
-  { id: 'chat' as TabType, label: 'Chat', icon: MessageCircle, shortcut: '8' },
+  { id: 'conversations' as TabType, label: 'Chat History', icon: MessageCircle, shortcut: '6' },
+  { id: 'calendar' as TabType, label: 'Calendar', icon: Calendar, shortcut: '7' },
+  { id: 'files' as TabType, label: 'Files', icon: FolderOpen, shortcut: '8' },
+  { id: 'chat' as TabType, label: 'Chat', icon: MessageCircle, shortcut: '9' },
 ];
 
 export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ 
@@ -113,7 +115,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
           return;
         }
         
-        // Handle tab shortcuts (1-7)
+        // Handle tab shortcuts (1-9)
         const tab = tabs.find(t => t.shortcut === pressedNumber);
         if (tab) {
           event.preventDefault();
@@ -168,6 +170,12 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
           style={{ display: activeTab === 'bugs' ? 'block' : 'none' }}
         >
           <BugsTab project={project} />
+        </div>
+        <div 
+          className="h-full absolute inset-0" 
+          style={{ display: activeTab === 'conversations' ? 'block' : 'none' }}
+        >
+          <ConversationsTab project={project} />
         </div>
         <div 
           className="h-full absolute inset-0" 

@@ -258,7 +258,13 @@ app.post('/api/conversations', async (req, res) => {
     
     console.log('Request body:', body);
     
-    const { title, messages, tags = [], projectContext, projectId } = body;
+    const { 
+      title, 
+      messages, 
+      tags = [], 
+      projectContext, 
+      projectId
+    } = body;
     const user = (req as any).user;
     
     console.log('User:', user ? { id: user.id, email: user.email } : 'No user');
@@ -276,10 +282,9 @@ app.post('/api/conversations', async (req, res) => {
       messages,
       tags,
       project_context: projectContext,
-      project_id: projectId || null, // Use provided projectId or null if not specified
+      project_id: projectId || null,
       user_id: user.id,
       source: 'mcp'
-      // Remove manual timestamps - let database handle defaults
     };
 
     const { data, error } = await supabase
@@ -322,7 +327,12 @@ app.get('/api/conversations', async (req, res) => {
 
     let queryBuilder = supabase
       .from('conversations')
-      .select('*')
+      .select(`
+        id, title, messages, tags, project_context, project_id, source, 
+        created_at, updated_at,
+        technical_details, implementation_summary, files_changed, 
+        code_changes, tool_usage
+      `)
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 

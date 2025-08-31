@@ -144,7 +144,7 @@ export interface ChatMessage {
   timestamp: Date;
 }
 
-export type TabType = 'dashboard' | 'docs' | 'tasks' | 'features' | 'bugs' | 'calendar' | 'files' | 'chat';
+export type TabType = 'dashboard' | 'docs' | 'tasks' | 'features' | 'bugs' | 'conversations' | 'calendar' | 'files' | 'chat';
 
 // AI API Key Management Types
 export interface ApiKeyState {
