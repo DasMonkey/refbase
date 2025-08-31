@@ -258,7 +258,7 @@ app.post('/api/conversations', async (req, res) => {
     
     console.log('Request body:', body);
     
-    const { title, messages, tags = [], projectContext } = body;
+    const { title, messages, tags = [], projectContext, projectId } = body;
     const user = (req as any).user;
     
     console.log('User:', user ? { id: user.id, email: user.email } : 'No user');
@@ -276,6 +276,7 @@ app.post('/api/conversations', async (req, res) => {
       messages,
       tags,
       project_context: projectContext,
+      project_id: projectId || null, // Use provided projectId or null if not specified
       user_id: user.id,
       source: 'mcp'
       // Remove manual timestamps - let database handle defaults
@@ -379,7 +380,8 @@ app.post('/api/bugs', async (req, res) => {
       status = 'open', 
       severity = 'medium',
       tags = [],
-      projectContext 
+      projectContext,
+      projectId 
     } = body;
     const user = (req as any).user;
 
@@ -401,7 +403,7 @@ app.post('/api/bugs', async (req, res) => {
       tags,
       project_context: projectContext,
       user_id: user.id,
-      project_id: null, // For MCP API, we allow bugs without specific projects
+      project_id: projectId || null, // Use provided projectId or null if not specified
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -504,7 +506,8 @@ app.post('/api/features', async (req, res) => {
       dependencies = [],
       techStack = [],
       tags = [],
-      projectContext 
+      projectContext,
+      projectId 
     } = body;
     const user = (req as any).user;
 
@@ -526,7 +529,7 @@ app.post('/api/features', async (req, res) => {
       tags,
       project_context: projectContext,
       user_id: user.id,
-      project_id: null, // For MCP API, we allow features without specific projects
+      project_id: projectId || null, // Use provided projectId or null if not specified
       status: 'implemented',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
