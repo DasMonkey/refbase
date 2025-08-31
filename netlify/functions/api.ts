@@ -374,6 +374,7 @@ app.post('/api/bugs', async (req, res) => {
     const { 
       title, 
       description, 
+      content,
       symptoms = [], 
       reproduction, 
       solution, 
@@ -385,23 +386,24 @@ app.post('/api/bugs', async (req, res) => {
     } = body;
     const user = (req as any).user;
 
-    if (!title || !description) {
+    if (!title) {
       return res.status(400).json({ 
         success: false, 
-        error: 'Missing required fields: title and description' 
+        error: 'Missing required field: title' 
       });
     }
 
     const bugData = {
       title,
-      description,
+      description: description || '',
+      content: content || description || '', // Use content if provided, fallback to description
       symptoms,
       reproduction: reproduction || '',
       solution: solution || '',
       status,
       severity,
       tags,
-      project_context: projectContext,
+      project_context: projectContext || null,
       user_id: user.id,
       project_id: projectId || null, // Use provided projectId or null if not specified
       created_at: new Date().toISOString(),
@@ -879,7 +881,7 @@ app.post('/api/api-keys', async (req, res) => {
     console.log('Main endpoint - Generated key prefix:', keyPrefix);
     
     // Parse IP address correctly (take first IP from x-forwarded-for)
-    let clientIp = null;
+    let clientIp: string | null = null;
     const forwardedFor = req.headers['x-forwarded-for'];
     if (forwardedFor) {
       // Take the first IP from the comma-separated list
