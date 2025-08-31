@@ -368,45 +368,20 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
             height: '200px' // Only cover bottom area where chat appears
           }}
         >
-          {/* AI Chat Indicator - Shows when chat is hidden */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ 
-              opacity: !shouldShowAiChat ? 1 : 0,
-              y: !shouldShowAiChat ? 0 : 10 
-            }}
-            transition={{ 
-              duration: 0.3, 
-              ease: "easeInOut",
-              opacity: { duration: 0.2 }
-            }}
-            className="absolute bottom-0 left-0 right-0 p-4 pointer-events-none"
-          >
-            <div className="max-w-2xl mx-auto">
-              <div className="flex flex-col items-center mb-4">
-                {/* Thick accent line */}
-                <div 
-                  className="h-1 rounded-full"
-                  style={{ 
-                    width: '120px',
-                    backgroundColor: isDark ? '#9ca3af' : '#6b7280' 
-                  }}
-                />
-              </div>
-            </div>
-          </motion.div>
 
           {/* AI Chat Component - Auto-hide based on mouse position */}
           <motion.div
-            initial={{ opacity: 0, y: 100 }}
+            initial={{ opacity: 0, y: 50 }}
             animate={{ 
               opacity: shouldShowAiChat ? 1 : 0,
-              y: shouldShowAiChat ? 0 : 100 
+              y: shouldShowAiChat ? 0 : 50 
             }}
             transition={{ 
-              duration: 0.3, 
-              ease: "easeInOut",
-              opacity: { duration: 0.2 }
+              type: "spring",
+              stiffness: 400,
+              damping: 30,
+              mass: 1,
+              opacity: { duration: 0.15 }
             }}
             className="absolute bottom-0 left-0 right-0 p-4"
             style={{
