@@ -4,7 +4,6 @@ import { MessageCircle, Search, Calendar, User, ChevronDown, ChevronRight, Code,
 import { Project } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
-import { ConversationParser, MessageTechnicalDetails } from '../utils/conversationParser';
 
 interface ConversationsTabProps {
   project: Project;
@@ -13,17 +12,32 @@ interface ConversationsTabProps {
 interface Conversation {
   id: string;
   title: string;
-  messages: any[];
+  messages: Array<{
+    role: string;
+    content: string;
+    timestamp?: string;
+  }>;
   tags: string[];
-  project_context: any;
+  project_context: Record<string, unknown>;
   created_at: string;
   updated_at: string;
   // Enhanced technical details
-  technical_details?: any;
+  technical_details?: Record<string, unknown>;
   implementation_summary?: string;
   files_changed?: string[];
-  code_changes?: any[];
-  tool_usage?: any[];
+  code_changes?: Array<{
+    file_path: string;
+    action: string;
+    change_summary?: string;
+    lines_added?: number;
+    lines_removed?: number;
+  }>;
+  tool_usage?: Array<{
+    tool: string;
+    timestamp: string;
+    success: boolean;
+    result?: string;
+  }>;
 }
 
 export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) => {
@@ -88,23 +102,10 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
       toolUsage: false
     });
 
-    // State for per-message expandable sections
-    const [messageExpanded, setMessageExpanded] = useState<Record<number, Record<string, boolean>>>({});
-
     const toggleSection = (section: string) => {
       setExpandedSections(prev => ({
         ...prev,
         [section]: !prev[section]
-      }));
-    };
-
-    const toggleMessageSection = (messageIndex: number, section: string) => {
-      setMessageExpanded(prev => ({
-        ...prev,
-        [messageIndex]: {
-          ...prev[messageIndex],
-          [section]: !prev[messageIndex]?.[section]
-        }
       }));
     };
 
@@ -115,30 +116,117 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
                                (conversation.tool_usage && conversation.tool_usage.length > 0) ||
                                (conversation.technical_details && Object.keys(conversation.technical_details).length > 0);
 
-    // Function to extract technical details from message content
-    const getMessageTechnicalDetails = (message: any, index: number) => {
-      if (message.role !== 'assistant') return null;
+    // Enhanced tool output extraction with file paths, errors, success indicators
+    const extractEnhancedToolOutputs = (content: string) => {
+      const toolOutputPattern = /●\s+(\w+):\s+(.+?)(?=●|$)/gs;
+      const toolMatches = [...content.matchAll(toolOutputPattern)];
+      
+      return toolMatches.map(match => {
+        const [, tool, output] = match;
+        const filePaths = output.match(/[\w/\\.-]+\.(ts|tsx|js|jsx|css|sql|md|json|yml|yaml)/g) || [];
+        const errors = output.match(/Error:|Failed:|Exception:|Uncaught/g) || [];
+        const success = output.includes('✓') || output.includes('Success') || output.includes('completed');
+        
+        return {
+          tool,
+          output,
+          filePaths,
+          errors,
+          success: success && errors.length === 0,
+          timestamp: new Date().toISOString()
+        };
+      });
+    };
+
+    // User intent extraction to parse user message context
+    const extractUserIntent = (userMessage: string) => {
+      const intentions = {
+        request: /please|can you|help me|i want|add|create|fix|implement/i.test(userMessage),
+        rejection: /don't like|reject|no|stop|not good|bad|wrong/i.test(userMessage),
+        approval: /good|great|yes|start|continue|looks good|perfect/i.test(userMessage),
+        feedback: /but|however|issue|problem|error|broken/i.test(userMessage),
+        question: /what|how|why|when|where|which|\?/i.test(userMessage)
+      };
+      
+      return {
+        ...intentions,
+        primaryIntent: Object.keys(intentions).find(key => intentions[key as keyof typeof intentions]) || 'unknown'
+      };
+    };
+
+    // Error context capture to track errors and fixes
+    const extractErrorContext = (content: string) => {
+      const errorPattern = /(?:Error|Failed|Exception|Uncaught|Syntax|Type|Reference).*?(?=\n|$)/g;
+      const fixPattern = /(?:Fix|Fixed|Solution|Resolved|Updated|Corrected).*?(?=\n|$)/g;
+      const errors = content.match(errorPattern) || [];
+      const fixes = content.match(fixPattern) || [];
+      
+      return {
+        errors: errors.map(err => err.trim()),
+        fixes: fixes.map(fix => fix.trim()),
+        hasErrors: errors.length > 0,
+        hasFixAttempts: fixes.length > 0
+      };
+    };
+
+    // Implementation approach tracking for decision-making context
+    const extractApproachContext = (content: string) => {
+      const approachPattern = /(?:approach|strategy|method|way|solution|implementation).*?(?=\n|$)/gi;
+      const rejectionPattern = /(?:rejected|abandoned|changed from|don't like|not working).*?(?=\n|$)/gi;
+      const approaches = content.match(approachPattern) || [];
+      const rejections = content.match(rejectionPattern) || [];
+      
+      return {
+        approaches: approaches.map(app => app.trim()),
+        rejections: rejections.map(rej => rej.trim()),
+        decisionPoints: approaches.length + rejections.length
+      };
+    };
+
+
+
+    // Enhanced function to extract technical details from message content
+    const getMessageTechnicalDetails = (message: { role: string; content: string; timestamp?: string }) => {
+      if (message.role !== 'assistant') {
+        // For user messages, extract intent and context
+        const userIntent = extractUserIntent(message.content || '');
+        return {
+          userIntent,
+          messageType: 'user_input'
+        };
+      }
       
       const content = message.content || '';
       
-      // Look for tool output patterns in the message content
+      // Enhanced tool output extraction
+      const enhancedToolOutputs = extractEnhancedToolOutputs(content);
+      
+      // Legacy pattern matching for backwards compatibility
       const toolOutputPattern = /●\s*(Read|Write|Edit|MultiEdit|Bash|Glob|Grep)\([^)]+\)/g;
       const fileUpdatePattern = /⎿\s*Updated\s+([^\s]+)\s+with\s+(\d+)\s+addition/g;
-      const codeBlockPattern = /```[\s\S]*?```/g;
       
       const toolOutputs = content.match(toolOutputPattern) || [];
       const fileUpdates = [...content.matchAll(fileUpdatePattern)];
-      const codeBlocks = content.match(codeBlockPattern) || [];
+      
+      // Extract comprehensive context
+      const errorContext = extractErrorContext(content);
+      const approachContext = extractApproachContext(content);
       
       // Extract file paths mentioned
       const filePathPattern = /(?:src\/|\.\/)[^\s<>:"|*?]+\.(ts|tsx|js|jsx|css|sql|md|json)/g;
       const filePaths = [...content.matchAll(filePathPattern)].map(match => match[0]);
       
-      if (toolOutputs.length === 0 && fileUpdates.length === 0 && codeBlocks.length === 0 && filePaths.length === 0) {
+      if (toolOutputs.length === 0 && fileUpdates.length === 0 && filePaths.length === 0 && 
+          enhancedToolOutputs.length === 0 && !errorContext.hasErrors && approachContext.decisionPoints === 0) {
         return null;
       }
       
+      // Extract code blocks from message content
+      const codeBlockPattern = /```[\s\S]*?```/g;
+      const codeBlocks = content.match(codeBlockPattern) || [];
+      
       return {
+        // Legacy fields for backwards compatibility
         toolOutputs,
         fileUpdates: fileUpdates.map(match => ({
           file: match[1],
@@ -146,7 +234,14 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
         })),
         codeBlocks,
         filesChanged: [...new Set(filePaths)],
-        implementationSummary: content.split('.')[0].substring(0, 150) + '...'
+        implementationSummary: content.split('.')[0].substring(0, 150) + '...',
+        
+        // Enhanced fields
+        enhancedToolOutputs,
+        errorContext,
+        approachContext,
+        messageType: 'assistant_response',
+        hasImplementationDetails: toolOutputs.length > 0 || enhancedToolOutputs.length > 0 || codeBlocks.length > 0
       };
     };
 
@@ -389,199 +484,241 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
                   : 'transparent'
               }}
               >
-                <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {message.content}
-                </div>
-
-                {/* Technical Details for Assistant Messages */}
+                {/* Render message content with enhanced inline context */}
                 {(() => {
-                  const technicalDetails = getMessageTechnicalDetails(message, index);
-                  if (!technicalDetails) return null;
-
+                  const content = message.content || '';
+                  const technicalDetails = getMessageTechnicalDetails(message);
+                  
+                  // Enhanced content with inline context
+                  let enhancedContent = content;
+                  
+                  // For user messages, add intent indicators
+                  if (message.role === 'user' && technicalDetails?.userIntent) {
+                    const intent = technicalDetails.userIntent;
+                    let intentBadge = '';
+                    
+                    if (intent.request) intentBadge = '🔵 Request: ';
+                    else if (intent.approval) intentBadge = '✅ Approval: ';
+                    else if (intent.rejection) intentBadge = '❌ Rejection: ';
+                    else if (intent.question) intentBadge = '❓ Question: ';
+                    else if (intent.feedback) intentBadge = '💬 Feedback: ';
+                    
+                    if (intentBadge) {
+                      enhancedContent = intentBadge + enhancedContent;
+                    }
+                  }
+                  
+                  // For assistant messages, add inline context
+                  if (message.role === 'assistant' && technicalDetails) {
+                    const contextAdditions = [];
+                    
+                    // Add error context
+                    if (technicalDetails.errorContext?.hasErrors && technicalDetails.errorContext.errors) {
+                      contextAdditions.push(`\n\n❌ **Errors Encountered:**\n${technicalDetails.errorContext.errors.join('\n')}`);
+                    }
+                    
+                    if (technicalDetails.errorContext?.hasFixAttempts && technicalDetails.errorContext.fixes) {
+                      contextAdditions.push(`\n\n🔧 **Fixes Applied:**\n${technicalDetails.errorContext.fixes.join('\n')}`);
+                    }
+                    
+                    // Add approach context
+                    if (technicalDetails.approachContext?.approaches && technicalDetails.approachContext.approaches.length > 0) {
+                      contextAdditions.push(`\n\n💡 **Implementation Approaches:**\n${technicalDetails.approachContext.approaches.join('\n')}`);
+                    }
+                    
+                    if (technicalDetails.approachContext?.rejections && technicalDetails.approachContext.rejections.length > 0) {
+                      contextAdditions.push(`\n\n🚫 **Rejected Approaches:**\n${technicalDetails.approachContext.rejections.join('\n')}`);
+                    }
+                    
+                    // Add enhanced tool outputs
+                    if (technicalDetails.enhancedToolOutputs && technicalDetails.enhancedToolOutputs.length > 0) {
+                      const toolSummary = technicalDetails.enhancedToolOutputs.map(tool => {
+                        const status = tool.success ? '✅' : '❌';
+                        const files = tool.filePaths && tool.filePaths.length > 0 ? ` (${tool.filePaths.join(', ')})` : '';
+                        return `${status} **${tool.tool}**${files}`;
+                      }).join('\n');
+                      contextAdditions.push(`\n\n🔧 **Tool Operations:**\n${toolSummary}`);
+                    }
+                    
+                    // Add files changed context
+                    if (technicalDetails.filesChanged && technicalDetails.filesChanged.length > 0) {
+                      contextAdditions.push(`\n\n📁 **Files Modified:** ${technicalDetails.filesChanged.join(', ')}`);
+                    }
+                    
+                    // Add code blocks summary (they'll be rendered by the main code block processor)
+                    if (technicalDetails.codeBlocks && technicalDetails.codeBlocks.length > 0) {
+                      contextAdditions.push(`\n\n💻 **Code Changes:** ${technicalDetails.codeBlocks.length} code block${technicalDetails.codeBlocks.length > 1 ? 's' : ''} with implementation details`);
+                    }
+                    
+                    enhancedContent = enhancedContent + contextAdditions.join('');
+                  }
+                  
+                  // Parse enhanced content for rendering
+                  const codeBlockPattern = /```(\w+)?\n?([\s\S]*?)```/g;
+                  const parts = [];
+                  let lastIndex = 0;
+                  let match;
+                  
+                  // Split content into text and code block parts
+                  while ((match = codeBlockPattern.exec(enhancedContent)) !== null) {
+                    // Add text before code block
+                    if (match.index > lastIndex) {
+                      parts.push({
+                        type: 'text',
+                        content: enhancedContent.substring(lastIndex, match.index)
+                      });
+                    }
+                    
+                    // Determine language - be more aggressive in detecting TypeScript/JavaScript
+                    let detectedLanguage = match[1] || 'text';
+                    const codeContent = match[2] || '';
+                    
+                    // If no language specified, try to detect from content
+                    if (!match[1] || match[1] === 'text') {
+                      if (codeContent.includes('const ') || codeContent.includes('function ') || 
+                          codeContent.includes('return ') || codeContent.includes('className=') ||
+                          codeContent.includes('interface ') || codeContent.includes('type ') ||
+                          codeContent.includes('React') || codeContent.includes('useState') ||
+                          codeContent.includes('=>') || codeContent.includes('...')) {
+                        detectedLanguage = 'typescript';
+                      }
+                    }
+                    
+                    // Add code block
+                    parts.push({
+                      type: 'code',
+                      language: detectedLanguage,
+                      content: codeContent
+                    });
+                    
+                    lastIndex = match.index + match[0].length;
+                  }
+                  
+                  // Add remaining text
+                  if (lastIndex < enhancedContent.length) {
+                    parts.push({
+                      type: 'text',
+                      content: enhancedContent.substring(lastIndex)
+                    });
+                  }
+                  
                   return (
-                    <div className={`mt-4 pt-4 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                      <div className={`text-xs font-medium mb-3 ${isDark ? 'text-gray-400' : 'text-gray-600'} flex items-center`}>
-                        <Code size={12} className="mr-1" />
-                        Technical Details
-                      </div>
-
-                      {/* Implementation Summary */}
-                      {technicalDetails.implementationSummary && (
-                        <div className={`mb-3 p-2 rounded text-xs ${isDark ? 'bg-blue-900/20 text-blue-300' : 'bg-blue-50 text-blue-800'}`}>
-                          <div className="flex items-center space-x-1 mb-1">
-                            <FileText size={10} />
-                            <span className="font-medium">Summary</span>
-                          </div>
-                          <div className="text-[11px] leading-relaxed">{technicalDetails.implementationSummary}</div>
-                        </div>
-                      )}
-
-                      {/* Tool Outputs */}
-                      {technicalDetails.toolOutputs && technicalDetails.toolOutputs.length > 0 && (
-                        <div className="mb-2">
-                          <button
-                            onClick={() => toggleMessageSection(index, 'toolOutputs')}
-                            className={`flex items-center space-x-1 text-xs font-medium ${isDark ? 'text-orange-400 hover:text-orange-300' : 'text-orange-600 hover:text-orange-700'} transition-colors`}
-                          >
-                            {messageExpanded[index]?.toolOutputs ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                            <Wrench size={10} />
-                            <span>Tool Outputs ({technicalDetails.toolOutputs.length})</span>
-                          </button>
+                    <div className="text-sm leading-relaxed">
+                      {parts.map((part, partIndex) => {
+                        if (part.type === 'text') {
+                          // Enhanced text rendering with markdown-style formatting
+                          const renderEnhancedText = (text: string) => {
+                            // Split by **bold** patterns while preserving them
+                            const parts = text.split(/(\*\*.*?\*\*)/g);
+                            
+                            return parts.map((chunk, chunkIndex) => {
+                              if (chunk.startsWith('**') && chunk.endsWith('**')) {
+                                // Bold text
+                                return (
+                                  <strong key={chunkIndex} className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                    {chunk.slice(2, -2)}
+                                  </strong>
+                                );
+                              } else {
+                                // Regular text with emoji support
+                                return (
+                                  <span key={chunkIndex} className="whitespace-pre-wrap">
+                                    {chunk}
+                                  </span>
+                                );
+                              }
+                            });
+                          };
                           
-                          {messageExpanded[index]?.toolOutputs && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              className="mt-1 space-y-1"
-                            >
-                              {technicalDetails.toolOutputs.map((output: string, outputIndex: number) => (
-                                <div
-                                  key={outputIndex}
-                                  className={`text-[10px] font-mono p-2 rounded ${isDark ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'} whitespace-pre-wrap`}
-                                >
-                                  {output}
-                                </div>
-                              ))}
-                            </motion.div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Files Changed */}
-                      {technicalDetails.filesChanged && technicalDetails.filesChanged.length > 0 && (
-                        <div className="mb-2">
-                          <button
-                            onClick={() => toggleMessageSection(index, 'filesChanged')}
-                            className={`flex items-center space-x-1 text-xs font-medium ${isDark ? 'text-green-400 hover:text-green-300' : 'text-green-600 hover:text-green-700'} transition-colors`}
-                          >
-                            {messageExpanded[index]?.filesChanged ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                            <Code size={10} />
-                            <span>Files Changed ({technicalDetails.filesChanged.length})</span>
-                          </button>
+                          return (
+                            <div key={partIndex} className="whitespace-pre-wrap">
+                              {renderEnhancedText(part.content)}
+                            </div>
+                          );
+                        } else {
+                          // Render code block with syntax highlighting
+                          const lines = part.content.split('\n');
                           
-                          {messageExpanded[index]?.filesChanged && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              className="mt-1 space-y-1"
-                            >
-                              {technicalDetails.filesChanged.map((file: string, fileIndex: number) => (
-                                <div
-                                  key={fileIndex}
-                                  className={`text-[10px] font-mono p-1.5 rounded ${isDark ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'}`}
-                                >
-                                  {file}
-                                </div>
-                              ))}
-                            </motion.div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Tool Usage */}
-                      {technicalDetails.toolUsage && technicalDetails.toolUsage.length > 0 && (
-                        <div className="mb-2">
-                          <button
-                            onClick={() => toggleMessageSection(index, 'toolUsage')}
-                            className={`flex items-center space-x-1 text-xs font-medium ${isDark ? 'text-orange-400 hover:text-orange-300' : 'text-orange-600 hover:text-orange-700'} transition-colors`}
-                          >
-                            {messageExpanded[index]?.toolUsage ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                            <Wrench size={10} />
-                            <span>Tools Used ({technicalDetails.toolUsage.length})</span>
-                          </button>
+                          // Try to extract starting line number from tool outputs in the message
+                          const messageText = content;
+                          const codeBlockIndex = messageText.indexOf('```' + part.language);
+                          const beforeCodeBlock = messageText.substring(0, codeBlockIndex);
                           
-                          {messageExpanded[index]?.toolUsage && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              className="mt-1 space-y-1"
-                            >
-                              {technicalDetails.toolUsage.map((tool: any, toolIndex: number) => (
-                                <div
-                                  key={toolIndex}
-                                  className={`text-[10px] p-2 rounded border-l-2 ${
-                                    tool.success 
-                                      ? (isDark ? 'bg-green-900/10 border-green-400 text-gray-300' : 'bg-green-50 border-green-400 text-gray-700')
-                                      : (isDark ? 'bg-red-900/10 border-red-400 text-gray-300' : 'bg-red-50 border-red-400 text-gray-700')
-                                  }`}
-                                >
-                                  <div className="flex items-center space-x-1 mb-1">
-                                    <Clock size={8} />
-                                    <span className="font-medium">{tool.tool}</span>
-                                  </div>
-                                  {tool.result && (
-                                    <div className={`text-[9px] ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                                      {tool.result}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </motion.div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Code Changes */}
-                      {technicalDetails.codeChanges && technicalDetails.codeChanges.length > 0 && (
-                        <div className="mb-2">
-                          <button
-                            onClick={() => toggleMessageSection(index, 'codeChanges')}
-                            className={`flex items-center space-x-1 text-xs font-medium ${isDark ? 'text-purple-400 hover:text-purple-300' : 'text-purple-600 hover:text-purple-700'} transition-colors`}
-                          >
-                            {messageExpanded[index]?.codeChanges ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                            <Code size={10} />
-                            <span>Code Changes ({technicalDetails.codeChanges.length})</span>
-                          </button>
+                          // Look for patterns like "Updated file.tsx with X additions and Y removals" followed by line numbers
+                          const toolOutputMatch = beforeCodeBlock.match(/Updated\s+[^\s]+\s+with\s+\d+\s+additions?\s+and\s+\d+\s+removals?/);
+                          const afterToolOutput = toolOutputMatch ? messageText.substring(messageText.indexOf(toolOutputMatch[0]) + toolOutputMatch[0].length, codeBlockIndex) : '';
                           
-                          {messageExpanded[index]?.codeChanges && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              className="mt-1 space-y-1"
+                          // Extract the first line number mentioned after the tool output
+                          const lineNumberInContext = afterToolOutput.match(/\b(\d{2,4})\b/);
+                          const contextStartingLineNumber = lineNumberInContext ? parseInt(lineNumberInContext[1]) : null;
+                          return (
+                            <div
+                              key={partIndex}
+                              className={`my-3 rounded-lg border font-mono text-xs overflow-hidden ${isDark ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
                             >
-                              {technicalDetails.codeChanges.map((change: any, changeIndex: number) => (
-                                <div
-                                  key={changeIndex}
-                                  className={`p-2 rounded border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
-                                >
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className={`text-[9px] font-mono ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                                      {change.file_path}
-                                    </span>
-                                    <span className={`text-[9px] px-1.5 py-0.5 rounded ${
-                                      change.action === 'create' 
-                                        ? (isDark ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-800')
-                                        : change.action === 'edit'
-                                        ? (isDark ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-800') 
-                                        : (isDark ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-800')
-                                    }`}>
-                                      {change.action}
-                                    </span>
-                                  </div>
-                                  {change.change_summary && (
-                                    <p className={`text-[9px] ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-1`}>
-                                      {change.change_summary}
-                                    </p>
-                                  )}
-                                  {change.lines_added !== undefined && change.lines_removed !== undefined && (
-                                    <div className="flex space-x-2 text-[9px]">
-                                      <span className={`${isDark ? 'text-green-400' : 'text-green-600'}`}>
-                                        +{change.lines_added}
+                              {/* Language header */}
+                              <div className={`px-3 py-1.5 border-b text-[10px] font-medium ${isDark ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-100 border-gray-200 text-gray-600'}`}>
+                                {part.language}
+                              </div>
+                              {/* Code content with line numbers */}
+                              <div className={`p-3 overflow-x-auto max-h-96 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`}>
+                                {lines.map((line, lineIndex) => {
+                                  // Use context starting line number if available, otherwise try to extract from line, fallback to sequential
+                                  const lineNumberMatch = line.match(/^\s*(\d+)[\s→+-]/);
+                                  const actualLineNumber = contextStartingLineNumber ? 
+                                    contextStartingLineNumber + lineIndex : 
+                                    lineNumberMatch ? parseInt(lineNumberMatch[1]) : lineIndex + 1;
+                                  
+                                  // Clean the line content by removing the line number prefix
+                                  const cleanLine = lineNumberMatch ? line.replace(/^\s*\d+[\s→+-]\s*/, '') : line;
+                                  
+                                  return (
+                                    <div key={lineIndex} className="flex items-start">
+                                      <span className={`select-none w-12 text-right pr-3 flex-shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                        {actualLineNumber}
                                       </span>
-                                      <span className={`${isDark ? 'text-red-400' : 'text-red-600'}`}>
-                                        -{change.lines_removed}
+                                    <span className="whitespace-pre flex-1 min-w-0">
+                                      {(() => {
+                                        // Basic syntax highlighting for TypeScript/JavaScript
+                                        if (part.language === 'typescript' || part.language === 'javascript' || part.language === 'tsx' || part.language === 'jsx') {
+                                          return cleanLine.split(/(\b(?:const|let|var|function|return|if|else|for|while|class|interface|type|import|export|from|async|await|try|catch|finally|throw|new|this|super|extends|implements|public|private|protected|readonly|static)\b|\/\/.*|\/\*[\s\S]*?\*\/|'[^']*'|"[^"]*"|`[^`]*`|\d+)/g).map((token, tokenIndex) => {
+                                            // Keywords
+                                            if (/^(const|let|var|function|return|if|else|for|while|class|interface|type|import|export|from|async|await|try|catch|finally|throw|new|this|super|extends|implements|public|private|protected|readonly|static)$/.test(token)) {
+                                              return <span key={tokenIndex} className={`font-semibold ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>{token}</span>;
+                                            }
+                                            // Comments
+                                            if (/^(\/\/.*|\/\*[\s\S]*?\*\/)$/.test(token)) {
+                                              return <span key={tokenIndex} className={`${isDark ? 'text-green-500' : 'text-green-600'}`}>{token}</span>;
+                                            }
+                                            // Strings
+                                            if (/^(['"`]).*\1$/.test(token)) {
+                                              return <span key={tokenIndex} className={`${isDark ? 'text-yellow-400' : 'text-orange-600'}`}>{token}</span>;
+                                            }
+                                            // Numbers
+                                            if (/^\d+$/.test(token)) {
+                                              return <span key={tokenIndex} className={`${isDark ? 'text-purple-400' : 'text-purple-600'}`}>{token}</span>;
+                                            }
+                                            // Default
+                                            return <span key={tokenIndex} className={`${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{token}</span>;
+                                          });
+                                        } else {
+                                          // For other languages, just show plain text
+                                          return <span className={`${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{cleanLine || '\u00A0'}</span>;
+                                        }
+                                        })()}
                                       </span>
                                     </div>
-                                  )}
-                                </div>
-                              ))}
-                            </motion.div>
-                          )}
-                        </div>
-                      )}
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        }
+                      })}
                     </div>
                   );
                 })()}
+
               </div>
               <div className={`flex items-center space-x-2 mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} ${
                 message.role === 'assistant' ? 'justify-start' : 'justify-end'

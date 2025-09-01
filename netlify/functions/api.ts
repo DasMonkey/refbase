@@ -372,6 +372,57 @@ app.get('/api/conversations', async (req, res) => {
   }
 });
 
+// GET specific conversation by ID
+app.get('/api/conversations/:id', async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Conversation ID is required' 
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('conversations')
+      .select(`
+        id, title, messages, tags, project_context, project_id, source, 
+        created_at, updated_at,
+        technical_details, implementation_summary, files_changed, 
+        code_changes, tool_usage
+      `)
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (error) {
+      console.error('Database error:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to retrieve conversation' 
+      });
+    }
+
+    if (!data) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Conversation not found' 
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      data 
+    });
+
+  } catch (error) {
+    console.error('Get conversation error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // BUGS ENDPOINTS
 app.post('/api/bugs', async (req, res) => {
   try {
