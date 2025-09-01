@@ -22,14 +22,27 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files - NEVER commit these
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# Test files with credentials
+test-api-local.js
 
 
 # Supabase
 supabase/functions/.env
 supabase/functions/.env.*
 
+Tasks/
 memory-bank/
 project_doc/
 # Local Netlify folder
 .netlify
+
+security-fixes/
