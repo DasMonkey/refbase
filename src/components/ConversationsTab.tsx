@@ -1,9 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { MessageCircle, Search, Calendar, User, ChevronDown, ChevronRight, Code, FileText, Wrench, Clock } from 'lucide-react';
+import { MessageCircle, Search, Calendar, User, ChevronDown, ChevronRight, Code, FileText, Wrench, Clock, Plus } from 'lucide-react';
 import { Project } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
+import { EnhancedEditor } from './ui/EnhancedEditor';
+import { 
+  extractEnhancedToolOutputs,
+  extractUserIntent,
+  extractErrorContext,
+  extractApproachContext,
+  getMessageTechnicalDetails,
+  enhanceConversationForMCP
+} from '../utils/conversationExtraction';
+import { saveEnhancedManualSession, getCurrentProjectContext } from '../utils/mcpConversationHelper';
 
 interface ConversationsTabProps {
   project: Project;
@@ -21,6 +31,7 @@ interface Conversation {
   project_context: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  source?: 'mcp' | 'manual'; // Add source property for conditional rendering
   // Enhanced technical details
   technical_details?: Record<string, unknown>;
   implementation_summary?: string;
@@ -40,12 +51,26 @@ interface Conversation {
   }>;
 }
 
+const sessionSources = [
+  { id: 'claude-code', label: 'Claude Code', description: 'Chat session from Claude Code IDE' },
+  { id: 'claude-web', label: 'Claude Web', description: 'Chat session from Claude.ai website' },
+  { id: 'chatgpt', label: 'ChatGPT', description: 'Chat session from OpenAI ChatGPT' },
+  { id: 'other', label: 'Other AI', description: 'Chat session from another AI tool' },
+  { id: 'custom', label: 'Custom', description: 'Custom formatted chat session' },
+];
+
 export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) => {
   const { isDark } = useTheme();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  
+  // New Session Modal states
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newSessionTitle, setNewSessionTitle] = useState('');
+  const [newSessionSource, setNewSessionSource] = useState<string>('claude-code');
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
 
   // Fetch conversations from the database
   useEffect(() => {
@@ -94,6 +119,197 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
     }
   };
 
+  // Parse chat content into messages based on source format
+  const parseChat = (content: string, source: string): Array<{role: string; content: string; timestamp?: string}> => {
+    const lines = content.split('\n');
+    const messages: Array<{role: string; content: string; timestamp?: string}> = [];
+    let currentMessage = { role: '', content: '', timestamp: undefined as string | undefined };
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Different parsing strategies based on source
+      if (source === 'claude-code') {
+        // Parse Claude Code format (User: / Assistant:)
+        if (line.match(/^(User|Assistant):\s*/)) {
+          // Save previous message if exists
+          if (currentMessage.role && currentMessage.content.trim()) {
+            messages.push({...currentMessage, content: currentMessage.content.trim()});
+          }
+          // Start new message
+          currentMessage = {
+            role: line.startsWith('User:') ? 'user' : 'assistant',
+            content: line.replace(/^(User|Assistant):\s*/, ''),
+            timestamp: new Date(Date.now() + i * 1000).toISOString() // Incremental timestamps
+          };
+        } else {
+          // Continue current message
+          if (currentMessage.role) {
+            currentMessage.content += '\n' + line;
+          }
+        }
+      } else if (source === 'claude-web') {
+        // Parse Claude.ai format (Human: / Assistant:)
+        if (line.match(/^(Human|Assistant):\s*/)) {
+          if (currentMessage.role && currentMessage.content.trim()) {
+            messages.push({...currentMessage, content: currentMessage.content.trim()});
+          }
+          currentMessage = {
+            role: line.startsWith('Human:') ? 'user' : 'assistant',
+            content: line.replace(/^(Human|Assistant):\s*/, ''),
+            timestamp: new Date(Date.now() + i * 1000).toISOString()
+          };
+        } else {
+          if (currentMessage.role) {
+            currentMessage.content += '\n' + line;
+          }
+        }
+      } else if (source === 'chatgpt') {
+        // Parse ChatGPT format (User: / ChatGPT:)
+        if (line.match(/^(User|ChatGPT):\s*/)) {
+          if (currentMessage.role && currentMessage.content.trim()) {
+            messages.push({...currentMessage, content: currentMessage.content.trim()});
+          }
+          currentMessage = {
+            role: line.startsWith('User:') ? 'user' : 'assistant',
+            content: line.replace(/^(User|ChatGPT):\s*/, ''),
+            timestamp: new Date(Date.now() + i * 1000).toISOString()
+          };
+        } else {
+          if (currentMessage.role) {
+            currentMessage.content += '\n' + line;
+          }
+        }
+      } else {
+        // Custom format - try to detect roles automatically
+        if (line.match(/^(user|assistant|human|ai|me|you):\s*/i)) {
+          if (currentMessage.role && currentMessage.content.trim()) {
+            messages.push({...currentMessage, content: currentMessage.content.trim()});
+          }
+          const roleMatch = line.match(/^(user|assistant|human|ai|me|you):\s*/i);
+          const detectedRole = roleMatch?.[1].toLowerCase() || '';
+          const role = ['user', 'me', 'human'].includes(detectedRole) ? 'user' : 'assistant';
+          
+          currentMessage = {
+            role,
+            content: line.replace(/^(user|assistant|human|ai|me|you):\s*/i, ''),
+            timestamp: new Date(Date.now() + i * 1000).toISOString()
+          };
+        } else {
+          if (currentMessage.role) {
+            currentMessage.content += '\n' + line;
+          }
+        }
+      }
+    }
+    
+    // Add final message
+    if (currentMessage.role && currentMessage.content.trim()) {
+      messages.push({...currentMessage, content: currentMessage.content.trim()});
+    }
+    
+    return messages.filter(msg => msg.content.trim().length > 0);
+  };
+
+  // Handle creating new session - save directly to database
+  const handleCreateSession = async () => {
+    if (!newSessionTitle.trim()) return;
+    
+    setIsCreatingSession(true);
+    
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // Save directly to database
+      const { data: newConversation, error } = await supabase
+        .from('conversations')
+        .insert([{
+          title: newSessionTitle,
+          messages: [{
+            role: 'user',
+            content: '',
+            timestamp: new Date().toISOString()
+          }],
+          tags: ['manual-entry', newSessionSource, 'draft'],
+          project_context: {
+            projectName: project.name,
+            language: undefined, // Project doesn't have language property
+            framework: undefined, // Project doesn't have framework property  
+            techStack: undefined // Project doesn't have techStack property
+          },
+          project_id: project.id,
+          user_id: user.id,
+          source: 'manual',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      // Refresh conversations list
+      const { data: updatedConversations, error: fetchError } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('project_id', project.id)
+        .order('created_at', { ascending: false });
+
+      if (!fetchError && updatedConversations) {
+        setConversations(updatedConversations);
+        // Select the new conversation to open it for editing
+        setSelectedConversation(newConversation);
+      }
+
+      // Reset modal
+      setShowCreateModal(false);
+      setNewSessionTitle('');
+      setNewSessionSource('claude-code');
+      
+    } catch (error) {
+      console.error('Error creating session:', error);
+      alert('Failed to create session. Please try again.');
+    } finally {
+      setIsCreatingSession(false);
+    }
+  };
+
+  // Handle saving conversation content (for manual sessions) with enhanced technical context
+  const handleSaveConversation = async (conversation: Conversation, newContent: string) => {
+    try {
+      // Get current project context for enhancement
+      const projectContext = await getCurrentProjectContext();
+      
+      // Use enhanced saving with technical context extraction
+      const enhancedMessages = await saveEnhancedManualSession(
+        conversation.id, 
+        newContent, 
+        projectContext
+      );
+
+      // Update the conversation in the local state with enhanced messages
+      setConversations(prev => prev.map(conv => 
+        conv.id === conversation.id 
+          ? { ...conv, messages: enhancedMessages, updated_at: new Date().toISOString() }
+          : conv
+      ));
+      setSelectedConversation(prev => 
+        prev?.id === conversation.id 
+          ? { ...prev, messages: enhancedMessages, updated_at: new Date().toISOString() }
+          : prev
+      );
+    } catch (error) {
+      console.error('Error in handleSaveConversation:', error);
+      alert('Failed to save conversation. Please try again.');
+    }
+  };
+
   const ConversationDetail = ({ conversation }: { conversation: Conversation }) => {
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
       technicalDetails: false,
@@ -116,134 +332,6 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
                                (conversation.tool_usage && conversation.tool_usage.length > 0) ||
                                (conversation.technical_details && Object.keys(conversation.technical_details).length > 0);
 
-    // Enhanced tool output extraction with file paths, errors, success indicators
-    const extractEnhancedToolOutputs = (content: string) => {
-      const toolOutputPattern = /●\s+(\w+):\s+(.+?)(?=●|$)/gs;
-      const toolMatches = [...content.matchAll(toolOutputPattern)];
-      
-      return toolMatches.map(match => {
-        const [, tool, output] = match;
-        const filePaths = output.match(/[\w/\\.-]+\.(ts|tsx|js|jsx|css|sql|md|json|yml|yaml)/g) || [];
-        const errors = output.match(/Error:|Failed:|Exception:|Uncaught/g) || [];
-        const success = output.includes('✓') || output.includes('Success') || output.includes('completed');
-        
-        return {
-          tool,
-          output,
-          filePaths,
-          errors,
-          success: success && errors.length === 0,
-          timestamp: new Date().toISOString()
-        };
-      });
-    };
-
-    // User intent extraction to parse user message context
-    const extractUserIntent = (userMessage: string) => {
-      const intentions = {
-        request: /please|can you|help me|i want|add|create|fix|implement/i.test(userMessage),
-        rejection: /don't like|reject|no|stop|not good|bad|wrong/i.test(userMessage),
-        approval: /good|great|yes|start|continue|looks good|perfect/i.test(userMessage),
-        feedback: /but|however|issue|problem|error|broken/i.test(userMessage),
-        question: /what|how|why|when|where|which|\?/i.test(userMessage)
-      };
-      
-      return {
-        ...intentions,
-        primaryIntent: Object.keys(intentions).find(key => intentions[key as keyof typeof intentions]) || 'unknown'
-      };
-    };
-
-    // Error context capture to track errors and fixes
-    const extractErrorContext = (content: string) => {
-      const errorPattern = /(?:Error|Failed|Exception|Uncaught|Syntax|Type|Reference).*?(?=\n|$)/g;
-      const fixPattern = /(?:Fix|Fixed|Solution|Resolved|Updated|Corrected).*?(?=\n|$)/g;
-      const errors = content.match(errorPattern) || [];
-      const fixes = content.match(fixPattern) || [];
-      
-      return {
-        errors: errors.map(err => err.trim()),
-        fixes: fixes.map(fix => fix.trim()),
-        hasErrors: errors.length > 0,
-        hasFixAttempts: fixes.length > 0
-      };
-    };
-
-    // Implementation approach tracking for decision-making context
-    const extractApproachContext = (content: string) => {
-      const approachPattern = /(?:approach|strategy|method|way|solution|implementation).*?(?=\n|$)/gi;
-      const rejectionPattern = /(?:rejected|abandoned|changed from|don't like|not working).*?(?=\n|$)/gi;
-      const approaches = content.match(approachPattern) || [];
-      const rejections = content.match(rejectionPattern) || [];
-      
-      return {
-        approaches: approaches.map(app => app.trim()),
-        rejections: rejections.map(rej => rej.trim()),
-        decisionPoints: approaches.length + rejections.length
-      };
-    };
-
-
-
-    // Enhanced function to extract technical details from message content
-    const getMessageTechnicalDetails = (message: { role: string; content: string; timestamp?: string }) => {
-      if (message.role !== 'assistant') {
-        // For user messages, extract intent and context
-        const userIntent = extractUserIntent(message.content || '');
-        return {
-          userIntent,
-          messageType: 'user_input'
-        };
-      }
-      
-      const content = message.content || '';
-      
-      // Enhanced tool output extraction
-      const enhancedToolOutputs = extractEnhancedToolOutputs(content);
-      
-      // Legacy pattern matching for backwards compatibility
-      const toolOutputPattern = /●\s*(Read|Write|Edit|MultiEdit|Bash|Glob|Grep)\([^)]+\)/g;
-      const fileUpdatePattern = /⎿\s*Updated\s+([^\s]+)\s+with\s+(\d+)\s+addition/g;
-      
-      const toolOutputs = content.match(toolOutputPattern) || [];
-      const fileUpdates = [...content.matchAll(fileUpdatePattern)];
-      
-      // Extract comprehensive context
-      const errorContext = extractErrorContext(content);
-      const approachContext = extractApproachContext(content);
-      
-      // Extract file paths mentioned
-      const filePathPattern = /(?:src\/|\.\/)[^\s<>:"|*?]+\.(ts|tsx|js|jsx|css|sql|md|json)/g;
-      const filePaths = [...content.matchAll(filePathPattern)].map(match => match[0]);
-      
-      if (toolOutputs.length === 0 && fileUpdates.length === 0 && filePaths.length === 0 && 
-          enhancedToolOutputs.length === 0 && !errorContext.hasErrors && approachContext.decisionPoints === 0) {
-        return null;
-      }
-      
-      // Extract code blocks from message content
-      const codeBlockPattern = /```[\s\S]*?```/g;
-      const codeBlocks = content.match(codeBlockPattern) || [];
-      
-      return {
-        // Legacy fields for backwards compatibility
-        toolOutputs,
-        fileUpdates: fileUpdates.map(match => ({
-          file: match[1],
-          additions: parseInt(match[2])
-        })),
-        codeBlocks,
-        filesChanged: [...new Set(filePaths)],
-        implementationSummary: content.split('.')[0].substring(0, 150) + '...',
-        
-        // Enhanced fields
-        enhancedToolOutputs,
-        errorContext,
-        approachContext,
-        messageType: 'assistant_response',
-        hasImplementationDetails: toolOutputs.length > 0 || enhancedToolOutputs.length > 0 || codeBlocks.length > 0
-      };
-    };
 
     return (
     <div className="h-full flex flex-col">
@@ -453,10 +541,31 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
         </div>
       )}
 
-      {/* Messages */}
-      <div className={`flex-1 overflow-y-auto p-6 space-y-4 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`} 
-           style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
-        {conversation.messages.map((message, index) => (
+      {/* Messages or Editor Content */}
+      {conversation.source === 'manual' ? (
+        /* Manual Session Editor */
+        <div className={`flex-1 min-h-0`} style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
+          <div className="h-full p-4">
+            <div className={`h-full border rounded-lg overflow-hidden`} style={{ 
+              backgroundColor: isDark ? '#111111' : '#ffffff',
+              borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
+            }}>
+              <EnhancedEditor
+                content={conversation.messages[0]?.content || ''}
+                onChange={(newContent) => handleSaveConversation(conversation, newContent)}
+                language="markdown"
+                placeholder="Paste your chat content here..."
+                fileName={conversation.title}
+                onBlur={() => {}} // Auto-save handled by onChange
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Regular Messages Display */
+        <div className={`flex-1 overflow-y-auto p-6 space-y-4 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`} 
+             style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
+          {conversation.messages.map((message, index) => (
           <motion.div
             key={index}
             initial={{ opacity: 0, y: 20 }}
@@ -742,7 +851,8 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
             </div>
           </motion.div>
         ))}
-      </div>
+        </div>
+      )}
     </div>
     );
   };
@@ -767,8 +877,19 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
       }}>
         {/* Header */}
         <div className={`p-4 border-b`} style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className={`w-full flex items-center justify-center py-2.5 px-4 text-sm font-medium transition-all duration-200 border rounded-lg mb-3 ${
+              isDark 
+                ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700 hover:border-gray-600' 
+                : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <Plus size={16} className="mr-2" />
+            New Session
+          </button>
           <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            Chat History
+            Sessions
           </h3>
           <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             {conversations.length} conversations
@@ -866,6 +987,102 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
           </div>
         )}
       </div>
+
+      {/* Create New Session Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className={`rounded-2xl p-6 w-full max-w-md mx-4 border`}
+            style={{ 
+              backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
+              borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
+            }}
+          >
+            <h3 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'} mb-6`}>Create New Session</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className={`block text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>
+                  Session Title
+                </label>
+                <input
+                  type="text"
+                  value={newSessionTitle}
+                  onChange={(e) => setNewSessionTitle(e.target.value)}
+                  placeholder="Enter session title"
+                  className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200`}
+                  style={{ 
+                    borderColor: isDark ? '#2a2a2a' : '#e2e8f0',
+                    backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                    color: isDark ? '#ffffff' : '#000000'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className={`block text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-3`}>
+                  Session Type
+                </label>
+                <div className="space-y-3">
+                  {sessionSources.map((source) => (
+                    <label key={source.id} className="flex items-start space-x-3 cursor-pointer group">
+                      <input
+                        type="radio"
+                        name="sessionSource"
+                        value={source.id}
+                        checked={newSessionSource === source.id}
+                        onChange={(e) => setNewSessionSource(e.target.value)}
+                        className="mt-1 text-blue-600"
+                      />
+                      <div className="flex-1">
+                        <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'} group-hover:text-blue-500 transition-colors`}>{source.label}</div>
+                        <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{source.description}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-8">
+              <button
+                onClick={() => {
+                  setShowCreateModal(false);
+                  setNewSessionTitle('');
+                  setNewSessionSource('claude-code');
+                }}
+                disabled={isCreatingSession}
+                className={`px-4 py-2 rounded-xl transition-colors font-medium`}
+                style={{ 
+                  color: isDark ? '#d1d5db' : '#374151',
+                  backgroundColor: 'transparent'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isDark ? '#0f172a' : '#f1f5f9'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateSession}
+                disabled={!newSessionTitle.trim() || isCreatingSession}
+                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              >
+                {isCreatingSession ? (
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    Creating...
+                  </div>
+                ) : (
+                  'Create'
+                )}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

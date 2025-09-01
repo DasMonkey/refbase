@@ -39,7 +39,7 @@ const tabs = [
   { id: 'tasks' as TabType, label: 'Tasks', icon: CheckSquare, shortcut: '3' },
   { id: 'features' as TabType, label: 'Features', icon: Lightbulb, shortcut: '4' },
   { id: 'bugs' as TabType, label: 'Bugs', icon: Bug, shortcut: '5' },
-  { id: 'conversations' as TabType, label: 'Chat History', icon: MessageCircle, shortcut: '6' },
+  { id: 'conversations' as TabType, label: 'Sessions', icon: MessageCircle, shortcut: '6' },
   { id: 'calendar' as TabType, label: 'Calendar', icon: Calendar, shortcut: '7' },
   { id: 'files' as TabType, label: 'Files', icon: FolderOpen, shortcut: '8' },
   { id: 'chat' as TabType, label: 'Chat', icon: MessageCircle, shortcut: '9' },
