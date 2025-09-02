@@ -719,6 +719,9 @@ app.patch('/api/bugs/:id', async (req, res) => {
     const user = (req as any).user;
     const { id } = req.params;
 
+    console.log('PATCH /api/bugs/:id - Bug ID:', id);
+    console.log('PATCH /api/bugs/:id - User ID:', user?.id);
+
     if (!id) {
       return res.status(400).json({ 
         success: false, 
@@ -732,43 +735,44 @@ app.patch('/api/bugs/:id', async (req, res) => {
       body = JSON.parse(req.body.toString());
     }
 
-    const { status, notes } = body;
+    console.log('PATCH /api/bugs/:id - Request body:', body);
 
-    // Validate status if provided
-    if (status) {
-      const validStatuses = ['open', 'in-progress', 'resolved', 'wont-fix'];
-      if (!validStatuses.includes(status)) {
-        return res.status(400).json({ 
-          success: false, 
-          error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` 
-        });
-      }
+    const { status } = body;
+
+    if (!status) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Status is required' 
+      });
     }
 
-    // Build update object
-    const updateData: any = {
+    // Validate status
+    const validStatuses = ['open', 'in-progress', 'resolved', 'wont-fix'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` 
+      });
+    }
+
+    // Simple update - just status and timestamp
+    const updateData = {
+      status: status,
       updated_at: new Date().toISOString()
     };
 
-    if (status) updateData.status = status;
-    if (notes && status === 'resolved' && !updateData.solution) {
-      updateData.solution = notes; // Add notes as solution if resolving
-    }
+    console.log('PATCH /api/bugs/:id - Update data:', updateData);
 
     const { data, error } = await supabase
       .from('bugs')
       .update(updateData)
       .eq('id', id)
       .eq('user_id', user.id)
-      .select(`
-        id, title, description, content, symptoms, reproduction, solution, 
-        status, severity, tags, project_context, project_id, 
-        created_at, updated_at
-      `)
+      .select('id, title, status, updated_at')
       .single();
 
     if (error) {
-      console.error('Database error:', error);
+      console.error('PATCH /api/bugs/:id - Database error:', error);
       if (error.code === 'PGRST116') {
         return res.status(404).json({ 
           success: false, 
@@ -777,9 +781,12 @@ app.patch('/api/bugs/:id', async (req, res) => {
       }
       return res.status(500).json({ 
         success: false, 
-        error: 'Failed to update bug status' 
+        error: 'Failed to update bug status',
+        details: error.message 
       });
     }
+
+    console.log('PATCH /api/bugs/:id - Success:', data);
 
     res.json({ 
       success: true, 
@@ -788,8 +795,12 @@ app.patch('/api/bugs/:id', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Update bug status error:', error);
-    res.status(500).json({ success: false, error: 'Internal server error' });
+    console.error('PATCH /api/bugs/:id - Unexpected error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      details: error.message
+    });
   }
 });
 
