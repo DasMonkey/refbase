@@ -438,18 +438,101 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
   const renderInfoSection = () => {
     if (!selectedBug) return null;
 
+    const hasDetailedInfo = selectedBug.symptoms?.length || 
+                          selectedBug.reproduction || 
+                          selectedBug.solution || 
+                          selectedBug.affectedFiles?.length || 
+                          selectedBug.errorMessages?.length;
+
     return (
-      <div className={`flex-1 min-h-0`} style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
-        <div className="h-full p-4">
-          <div className={`h-full border rounded-lg`} style={{ 
+      <div className={`flex-1 min-h-0 overflow-y-auto ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`} style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
+        <div className="p-4 space-y-4">
+          {/* Detailed Information Section */}
+          {hasDetailedInfo && (
+            <div className={`border rounded-lg p-4 space-y-4`} style={{ 
+              backgroundColor: isDark ? '#111111' : '#ffffff',
+              borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
+            }}>
+              <h3 className={`text-sm font-semibold ${isDark ? 'text-gray-200' : 'text-gray-800'} border-b pb-2`} style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
+                Bug Details
+              </h3>
+              
+              {/* Symptoms */}
+              {selectedBug.symptoms?.length && (
+                <div>
+                  <h4 className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>Symptoms</h4>
+                  <ul className="space-y-1">
+                    {selectedBug.symptoms.map((symptom, index) => (
+                      <li key={index} className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} flex items-start`}>
+                        <span className="text-red-500 mr-2">•</span>
+                        <span>{symptom}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Reproduction Steps */}
+              {selectedBug.reproduction && (
+                <div>
+                  <h4 className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>Reproduction Steps</h4>
+                  <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} whitespace-pre-line bg-gray-50 dark:bg-gray-900 p-3 rounded border-l-4 border-l-blue-500`}>
+                    {selectedBug.reproduction}
+                  </div>
+                </div>
+              )}
+
+              {/* Solution */}
+              {selectedBug.solution && (
+                <div>
+                  <h4 className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>Proposed Solution</h4>
+                  <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} whitespace-pre-line bg-gray-50 dark:bg-gray-900 p-3 rounded border-l-4 border-l-green-500`}>
+                    {selectedBug.solution}
+                  </div>
+                </div>
+              )}
+
+              {/* Affected Files */}
+              {selectedBug.affectedFiles?.length && (
+                <div>
+                  <h4 className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>Affected Files</h4>
+                  <div className="space-y-1">
+                    {selectedBug.affectedFiles.map((file, index) => (
+                      <div key={index} className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} font-mono bg-gray-50 dark:bg-gray-900 px-2 py-1 rounded text-xs`}>
+                        {file}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Error Messages */}
+              {selectedBug.errorMessages?.length && (
+                <div>
+                  <h4 className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>Error Messages</h4>
+                  <div className="space-y-2">
+                    {selectedBug.errorMessages.map((error, index) => (
+                      <div key={index} className={`text-sm ${isDark ? 'text-red-400' : 'text-red-600'} bg-red-50 dark:bg-red-900/20 p-2 rounded border-l-4 border-l-red-500 font-mono`}>
+                        {error}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Main Content Editor */}
+          <div className={`border rounded-lg flex-1`} style={{ 
             backgroundColor: isDark ? '#111111' : '#ffffff',
-            borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
+            borderColor: isDark ? '#2a2a2a' : '#e2e8f0',
+            minHeight: hasDetailedInfo ? '300px' : '500px'
           }}>
             <BlockEditor
               key={`${selectedBug.id}-${selectedBug.updatedAt?.getTime()}`}
               content={stringToBlocks(selectedBug.content)}
               onChange={(blocks) => handleContentChange(blocksToString(blocks))}
-              placeholder="Describe the bug details, steps to reproduce, expected vs actual behavior, environment info..."
+              placeholder="Additional notes, investigation details, or development comments..."
               onSave={(blocks) => handleSaveWithContent(blocksToString(blocks))}
               forceSaveRef={forceSaveRef}
               enableImageUpload={true}

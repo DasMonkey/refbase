@@ -90,6 +90,12 @@ export interface Bug {
   assignee?: string;
   attachments: string[];
   featureId?: string; // Link to related feature
+  // Detailed bug information fields
+  symptoms?: string[]; // Observable symptoms of the bug
+  reproduction?: string; // Steps to reproduce the bug
+  solution?: string; // Proposed solution or fix
+  affectedFiles?: string[]; // Files affected by this bug
+  errorMessages?: string[]; // Error messages associated with the bug
   createdAt: Date;
   updatedAt: Date;
 }
