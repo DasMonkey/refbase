@@ -979,6 +979,240 @@ app.get('/api/features/:id', async (req, res) => {
   }
 });
 
+// FEATURE FILE ENDPOINTS
+app.post('/api/features/:featureId/files', async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { featureId } = req.params;
+    
+    // Parse body if it's a Buffer
+    let body = req.body;
+    if (Buffer.isBuffer(req.body)) {
+      body = JSON.parse(req.body.toString());
+    }
+    
+    const { 
+      name, 
+      type, 
+      content = '',
+      language = 'markdown'
+    } = body;
+
+    if (!name || !type) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Name and type are required' 
+      });
+    }
+
+    if (!featureId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Feature ID is required' 
+      });
+    }
+
+    // Verify the feature exists and belongs to the user
+    const { data: feature, error: featureError } = await supabase
+      .from('features')
+      .select('id, project_id')
+      .eq('id', featureId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (featureError || !feature) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Feature not found' 
+      });
+    }
+
+    // Create the feature file
+    const { data, error } = await supabase
+      .from('feature_files')
+      .insert({
+        feature_id: featureId,
+        project_id: feature.project_id,
+        user_id: user.id,
+        name: name.trim(),
+        type,
+        content,
+        language,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Database error:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to create feature file',
+        details: error.message
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      data: {
+        id: data.id,
+        featureId: data.feature_id,
+        name: data.name,
+        type: data.type,
+        content: data.content,
+        language: data.language,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      }
+    });
+
+  } catch (error) {
+    console.error('Create feature file error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+app.get('/api/features/:featureId/files', async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { featureId } = req.params;
+
+    if (!featureId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Feature ID is required' 
+      });
+    }
+
+    // Verify the feature exists and belongs to the user
+    const { data: feature, error: featureError } = await supabase
+      .from('features')
+      .select('id')
+      .eq('id', featureId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (featureError || !feature) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Feature not found' 
+      });
+    }
+
+    // Get all files for this feature
+    const { data, error } = await supabase
+      .from('feature_files')
+      .select('id, feature_id, name, type, content, language, created_at, updated_at')
+      .eq('feature_id', featureId)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Database error:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to retrieve feature files' 
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      data: data || []
+    });
+
+  } catch (error) {
+    console.error('Get feature files error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+app.put('/api/features/:featureId/files/:fileId', async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { featureId, fileId } = req.params;
+    
+    // Parse body if it's a Buffer
+    let body = req.body;
+    if (Buffer.isBuffer(req.body)) {
+      body = JSON.parse(req.body.toString());
+    }
+    
+    const { 
+      name, 
+      content, 
+      language = 'markdown'
+    } = body;
+
+    if (!featureId || !fileId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Feature ID and File ID are required' 
+      });
+    }
+
+    // Verify the file exists and belongs to the user
+    const { data: existingFile, error: checkError } = await supabase
+      .from('feature_files')
+      .select('id, feature_id')
+      .eq('id', fileId)
+      .eq('feature_id', featureId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (checkError || !existingFile) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Feature file not found' 
+      });
+    }
+
+    // Update the feature file
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (name !== undefined) updateData.name = name.trim();
+    if (content !== undefined) updateData.content = content;
+    if (language !== undefined) updateData.language = language;
+
+    const { data, error } = await supabase
+      .from('feature_files')
+      .update(updateData)
+      .eq('id', fileId)
+      .eq('user_id', user.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Database error:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to update feature file',
+        details: error.message
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      data: {
+        id: data.id,
+        featureId: data.feature_id,
+        name: data.name,
+        type: data.type,
+        content: data.content,
+        language: data.language,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      }
+    });
+
+  } catch (error) {
+    console.error('Update feature file error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // PROJECTS ENDPOINTS
 app.post('/api/projects', async (req, res) => {
   try {

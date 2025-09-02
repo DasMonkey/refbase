@@ -477,11 +477,14 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
                 <div>
                   <h4 className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>Reproduction Steps</h4>
                   <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} bg-gray-50 dark:bg-gray-900 p-3 rounded border-l-4 border-l-blue-500`}>
-                    {selectedBug.reproduction.split('\n').map((line, index) => (
-                      <div key={index} className="mb-1 last:mb-0">
-                        {line}
-                      </div>
-                    ))}
+                    {selectedBug.reproduction
+                      .split(/\\n|\n/) // Split on both literal \n and actual newlines
+                      .filter(line => line.trim()) // Remove empty lines
+                      .map((line, index) => (
+                        <div key={index} className="mb-2 last:mb-0">
+                          {line.trim()}
+                        </div>
+                      ))}
                   </div>
                 </div>
               )}
@@ -491,11 +494,14 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
                 <div>
                   <h4 className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>Proposed Solution</h4>
                   <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} bg-gray-50 dark:bg-gray-900 p-3 rounded border-l-4 border-l-green-500`}>
-                    {selectedBug.solution.split('\n').map((line, index) => (
-                      <div key={index} className="mb-1 last:mb-0">
-                        {line}
-                      </div>
-                    ))}
+                    {selectedBug.solution
+                      .split(/\\n|\n/) // Split on both literal \n and actual newlines
+                      .filter(line => line.trim()) // Remove empty lines
+                      .map((line, index) => (
+                        <div key={index} className="mb-2 last:mb-0">
+                          {line.trim()}
+                        </div>
+                      ))}
                   </div>
                 </div>
               )}
