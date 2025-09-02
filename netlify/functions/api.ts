@@ -713,6 +713,86 @@ app.put('/api/bugs/:id', async (req, res) => {
   }
 });
 
+// PATCH bug (for MCP status updates)
+app.patch('/api/bugs/:id', async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Bug ID is required' 
+      });
+    }
+
+    // Parse body if it's a Buffer
+    let body = req.body;
+    if (Buffer.isBuffer(req.body)) {
+      body = JSON.parse(req.body.toString());
+    }
+
+    const { status, notes } = body;
+
+    // Validate status if provided
+    if (status) {
+      const validStatuses = ['open', 'in-progress', 'resolved', 'wont-fix'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` 
+        });
+      }
+    }
+
+    // Build update object
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (status) updateData.status = status;
+    if (notes && status === 'resolved' && !updateData.solution) {
+      updateData.solution = notes; // Add notes as solution if resolving
+    }
+
+    const { data, error } = await supabase
+      .from('bugs')
+      .update(updateData)
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .select(`
+        id, title, description, content, symptoms, reproduction, solution, 
+        status, severity, tags, project_context, project_id, 
+        created_at, updated_at
+      `)
+      .single();
+
+    if (error) {
+      console.error('Database error:', error);
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Bug not found or not owned by user' 
+        });
+      }
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to update bug status' 
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      data,
+      message: 'Bug status updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Update bug status error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // FEATURES ENDPOINTS
 app.post('/api/features', async (req, res) => {
   try {
