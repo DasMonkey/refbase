@@ -551,6 +551,172 @@ app.get('/api/bugs', async (req, res) => {
   }
 });
 
+// GET specific bug by ID
+app.get('/api/bugs/:id', async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Bug ID is required' 
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('bugs')
+      .select(`
+        id, title, description, content, symptoms, reproduction, solution, 
+        status, severity, tags, project_context, project_id, 
+        created_at, updated_at, affected_files, error_messages
+      `)
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (error) {
+      console.error('Database error:', error);
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Bug not found' 
+        });
+      }
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to retrieve bug' 
+      });
+    }
+
+    if (!data) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Bug not found' 
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      data 
+    });
+
+  } catch (error) {
+    console.error('Get bug error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// UPDATE bug (status, solution, etc.)
+app.put('/api/bugs/:id', async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Bug ID is required' 
+      });
+    }
+
+    // Parse body if it's a Buffer
+    let body = req.body;
+    if (Buffer.isBuffer(req.body)) {
+      body = JSON.parse(req.body.toString());
+    }
+
+    const { 
+      title, 
+      description, 
+      content,
+      symptoms, 
+      reproduction, 
+      solution, 
+      status, 
+      severity,
+      tags,
+      affected_files,
+      error_messages
+    } = body;
+
+    // Build update object with only provided fields
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (content !== undefined) updateData.content = content;
+    if (symptoms !== undefined) updateData.symptoms = symptoms;
+    if (reproduction !== undefined) updateData.reproduction = reproduction;
+    if (solution !== undefined) updateData.solution = solution;
+    if (severity !== undefined) updateData.severity = severity;
+    if (tags !== undefined) updateData.tags = tags;
+    if (affected_files !== undefined) updateData.affected_files = affected_files;
+    if (error_messages !== undefined) updateData.error_messages = error_messages;
+
+    // Validate status if provided
+    if (status !== undefined) {
+      const validStatuses = ['open', 'in-progress', 'resolved', 'wont-fix'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` 
+        });
+      }
+      updateData.status = status;
+    }
+
+    // Validate severity if provided
+    if (severity !== undefined) {
+      const validSeverities = ['low', 'medium', 'high', 'critical'];
+      if (!validSeverities.includes(severity)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `Invalid severity. Must be one of: ${validSeverities.join(', ')}` 
+        });
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('bugs')
+      .update(updateData)
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .select(`
+        id, title, description, content, symptoms, reproduction, solution, 
+        status, severity, tags, project_context, project_id, 
+        created_at, updated_at, affected_files, error_messages
+      `)
+      .single();
+
+    if (error) {
+      console.error('Database error:', error);
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Bug not found or not owned by user' 
+        });
+      }
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to update bug' 
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      data,
+      message: 'Bug updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Update bug error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // FEATURES ENDPOINTS
 app.post('/api/features', async (req, res) => {
   try {
@@ -669,6 +835,62 @@ app.get('/api/features', async (req, res) => {
 
   } catch (error) {
     console.error('Search features error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET specific feature by ID
+app.get('/api/features/:id', async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Feature ID is required' 
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('features')
+      .select(`
+        id, title, description, implementation, code_examples, patterns, 
+        dependencies, tech_stack, tags, project_context, project_id, 
+        status, created_at, updated_at
+      `)
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (error) {
+      console.error('Database error:', error);
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Feature not found' 
+        });
+      }
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to retrieve feature' 
+      });
+    }
+
+    if (!data) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Feature not found' 
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      data 
+    });
+
+  } catch (error) {
+    console.error('Get feature error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
