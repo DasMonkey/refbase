@@ -9,7 +9,7 @@
 
 ## 🚀 What is RefBase?
 
-RefBase is a revolutionary webapp that integrates with AI-powered IDEs like Kiro, Cursor and Claude Code to automatically capture, process, and organize your coding conversations into an intelligent knowledge base. Never lose track of solutions, patterns, or debugging insights again.
+RefBase is an intelligent knowledge management platform specifically designed for developers working with AI assistants. Store, organize, and search your AI conversations, bug reports, and implementation solutions. Seamlessly integrates with Cursor, Claude Code, and other MCP-compatible IDEs to capture your development knowledge automatically.
 
 ### The Problem
 - **Lost Solutions**: Brilliant solutions from AI chats disappear in IDE history
@@ -18,30 +18,29 @@ RefBase is a revolutionary webapp that integrates with AI-powered IDEs like Kiro
 - **Pattern Blindness**: Missing recurring successful approaches and anti-patterns
 
 ### The Solution
-RefBase transforms your AI coding sessions into a **living, searchable knowledge base** that:
-- 📚 **Captures** every AI conversation with full context
-- 🧠 **Analyzes** patterns and extracts reusable solutions
-- 🔍 **Organizes** by project, topic, and success patterns
-- 🤝 **Shares** team knowledge and best practices
-- 📈 **Learns** from your coding journey to suggest better approaches
+RefBase transforms your development knowledge into a **searchable, organized database** that:
+- 📚 **Stores** AI conversations with enhanced technical detail extraction
+- 🐛 **Tracks** bugs with symptoms, solutions, and resolution patterns
+- 💡 **Organizes** features with implementation details and code examples
+- 🔍 **Searches** across all your development knowledge by project and technology
+- 🔄 **Feeds** relevant context back to AI assistants for smarter suggestions
 
 ## ✨ Key Features
 
-### 🎯 **Smart Project Management**
-- Multi-project workspace with Discord-style navigation
-- Task management with Kanban boards and sprint planning
-- Bug tracking with severity levels and resolution patterns
-- Document management (PRDs, technical specs, knowledge base)
-- Team chat and real-time collaboration
+### 🎯 **AI-Powered Knowledge Management**
+- Multi-project workspace with organized project navigation
+- **Bug tracking** with severity levels, symptoms, and resolution patterns
+- **Feature storage** with implementation details and code examples  
+- **Document management** for technical specs and knowledge base
+- **Enhanced conversation export** with automatic technical detail extraction
 
-### 💬 **AI Conversation Integration & Learning Loop**
-- **MCP Server** integration with Cursor, Claude Code, and compatible IDEs
-- Automatic chat history import and processing with real-time analysis
-- **AI Learning Loop**: Successful implementations automatically extracted and fed back to AI
-- Conversation categorization (bug fixes, features, debugging, learning)
-- Code snippet extraction and syntax highlighting
-- Context preservation with file paths and project state
-- **Smart Context Feeding**: AI receives relevant patterns and implementation history for better performance
+### 💬 **Enhanced AI Conversation Export & MCP Integration**
+- **Revolutionary Enhanced Export**: Automatically extracts code blocks, tool outputs, errors, and implementation approaches from conversations with zero manual work
+- **MCP Server** integration with Cursor, Claude Code, and compatible IDEs for real-time capture
+- **Smart Context Feeding**: AI searches past conversations for similar issues and provides proven solutions
+- **Rich Technical Detail Preservation**: Complete implementation context including file modifications, debugging steps, and error resolution patterns
+- Manual conversation import support for existing chat logs
+- Automatic categorization by problem type, technology stack, and success patterns
 
 ### 🧩 **Advanced Pattern Recognition & AI Learning Loop**
 - **Automatic Pattern Extraction**: Successful implementations become reusable patterns
@@ -52,19 +51,32 @@ RefBase transforms your AI coding sessions into a **living, searchable knowledge
 - Success rate tracking and continuous improvement of pattern effectiveness
 - Cross-project pattern sharing and intelligent reuse recommendations
 
-### 🔍 **Intelligent Search & Discovery**
-- Semantic search across all conversations and code
-- Filter by project, technology stack, success rate, and date
-- Related conversation suggestions
-- Pattern-based recommendations
-- Context-aware search results
+### 🔍 **Search & Discovery**
+- Text search across conversations, bugs, and features
+- Filter by project, technology stack, tags, and date
+- Success pattern extraction and reuse recommendations  
+- Cross-project intelligence and knowledge sharing
+- Smart categorization by technology stack and problem type
+- **Coming Soon**: Semantic search with AI-powered similarity matching
 
-### 📊 **Analytics & Insights**
-- Coding productivity trends and patterns
-- Problem resolution success rates
-- Technology skill development tracking
-- Team collaboration metrics
-- Learning progress visualization
+## 🚧 Coming Soon
+
+### **AI Chat with Project** 
+- Direct AI conversation interface within RefBase
+- Context-aware AI that knows your project history and patterns
+- Intelligent suggestions based on your stored conversations and solutions
+
+### **Advanced Project Management**
+- Kanban task boards with customizable workflows
+- Sprint planning and milestone tracking
+- Team collaboration features and real-time updates
+- Advanced analytics dashboard with productivity insights
+
+### **Enhanced Team Features**
+- Team workspaces with role-based permissions
+- Real-time collaboration and commenting
+- Shared pattern libraries across team members
+- Discord-style navigation and communication
 
 ## 🏗️ Architecture
 
@@ -86,10 +98,10 @@ RefBase is built as a modern, scalable web application with the following archit
          │                       │                        │
          │                       ▼                        ▼
          │              ┌──────────────────┐    ┌─────────────────┐
-         └──────────────│   Pattern        │    │   Vector Search │
-           Smart        │   Library &      │    │   Semantic      │
-           Context      │   Success        │    │   Embeddings    │
-           Feeding      │   Tracking       │    │   Pinecone      │
+         └──────────────│   Pattern        │    │   Text Search   │
+           Smart        │   Library &      │    │   & Filtering   │
+           Context      │   Success        │    │   PostgreSQL    │
+           Feeding      │   Tracking       │    │   Full-text     │
                         └──────────────────┘    └─────────────────┘
 ```
 
