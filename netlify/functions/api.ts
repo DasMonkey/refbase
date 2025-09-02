@@ -1029,17 +1029,22 @@ app.post('/api/features/:featureId/files', async (req, res) => {
 
     // Create the feature file
     const { data, error } = await supabase
-      .from('feature_files')
+      .from('feature_data')
       .insert({
         feature_id: featureId,
         project_id: feature.project_id,
-        user_id: user.id,
+        data_type: 'info_file',
         name: name.trim(),
-        type,
         content,
-        language,
+        content_type: language || 'markdown',
+        order: 1,
+        status: 'active',
+        priority: 'medium',
+        metadata: JSON.stringify({ fileType: type }),
+        settings: JSON.stringify({}),
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        accessed_at: new Date().toISOString()
       })
       .select()
       .single();
@@ -1059,9 +1064,9 @@ app.post('/api/features/:featureId/files', async (req, res) => {
         id: data.id,
         featureId: data.feature_id,
         name: data.name,
-        type: data.type,
+        type: data.data_type,
         content: data.content,
-        language: data.language,
+        language: data.content_type,
         createdAt: data.created_at,
         updatedAt: data.updated_at
       }
@@ -1102,10 +1107,9 @@ app.get('/api/features/:featureId/files', async (req, res) => {
 
     // Get all files for this feature
     const { data, error } = await supabase
-      .from('feature_files')
-      .select('id, feature_id, name, type, content, language, created_at, updated_at')
+      .from('feature_data')
+      .select('id, feature_id, name, data_type, content, content_type, created_at, updated_at')
       .eq('feature_id', featureId)
-      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -1153,11 +1157,10 @@ app.put('/api/features/:featureId/files/:fileId', async (req, res) => {
 
     // Verify the file exists and belongs to the user
     const { data: existingFile, error: checkError } = await supabase
-      .from('feature_files')
+      .from('feature_data')
       .select('id, feature_id')
       .eq('id', fileId)
       .eq('feature_id', featureId)
-      .eq('user_id', user.id)
       .single();
 
     if (checkError || !existingFile) {
@@ -1174,13 +1177,12 @@ app.put('/api/features/:featureId/files/:fileId', async (req, res) => {
 
     if (name !== undefined) updateData.name = name.trim();
     if (content !== undefined) updateData.content = content;
-    if (language !== undefined) updateData.language = language;
+    if (language !== undefined) updateData.content_type = language;
 
     const { data, error } = await supabase
-      .from('feature_files')
+      .from('feature_data')
       .update(updateData)
       .eq('id', fileId)
-      .eq('user_id', user.id)
       .select()
       .single();
 
@@ -1199,9 +1201,9 @@ app.put('/api/features/:featureId/files/:fileId', async (req, res) => {
         id: data.id,
         featureId: data.feature_id,
         name: data.name,
-        type: data.type,
+        type: data.data_type,
         content: data.content,
-        language: data.language,
+        language: data.content_type,
         createdAt: data.created_at,
         updatedAt: data.updated_at
       }
