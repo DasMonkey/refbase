@@ -5,7 +5,7 @@
       "args": ["D:\\AI\\Cursor projects\\refbase-mcp\\dist\\cli.js"],
       "env": {
         "REFBASE_API_URL": "https://refbase.dev/api",
-        "REFBASE_API_KEY": "refb_8fd5e1f846be29d1103301c0a965561f",
+        "REFBASE_API_KEY": "refb_f44fc250030aa2e6077e9ccac15d4eb7",
         "LOG_LEVEL": "info"
       }
     }
