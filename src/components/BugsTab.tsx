@@ -476,8 +476,12 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
               {selectedBug.reproduction && (
                 <div>
                   <h4 className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>Reproduction Steps</h4>
-                  <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} whitespace-pre-line bg-gray-50 dark:bg-gray-900 p-3 rounded border-l-4 border-l-blue-500`}>
-                    {selectedBug.reproduction}
+                  <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} bg-gray-50 dark:bg-gray-900 p-3 rounded border-l-4 border-l-blue-500`}>
+                    {selectedBug.reproduction.split('\n').map((line, index) => (
+                      <div key={index} className="mb-1 last:mb-0">
+                        {line}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -486,8 +490,12 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
               {selectedBug.solution && (
                 <div>
                   <h4 className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>Proposed Solution</h4>
-                  <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} whitespace-pre-line bg-gray-50 dark:bg-gray-900 p-3 rounded border-l-4 border-l-green-500`}>
-                    {selectedBug.solution}
+                  <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} bg-gray-50 dark:bg-gray-900 p-3 rounded border-l-4 border-l-green-500`}>
+                    {selectedBug.solution.split('\n').map((line, index) => (
+                      <div key={index} className="mb-1 last:mb-0">
+                        {line}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
