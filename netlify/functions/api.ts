@@ -569,7 +569,7 @@ app.get('/api/bugs/:id', async (req, res) => {
       .select(`
         id, title, description, content, symptoms, reproduction, solution, 
         status, severity, tags, project_context, project_id, 
-        created_at, updated_at, affected_files, error_messages
+        created_at, updated_at
       `)
       .eq('id', id)
       .eq('user_id', user.id)
@@ -636,8 +636,6 @@ app.put('/api/bugs/:id', async (req, res) => {
       status, 
       severity,
       tags,
-      affected_files,
-      error_messages
     } = body;
 
     // Build update object with only provided fields
@@ -653,8 +651,6 @@ app.put('/api/bugs/:id', async (req, res) => {
     if (solution !== undefined) updateData.solution = solution;
     if (severity !== undefined) updateData.severity = severity;
     if (tags !== undefined) updateData.tags = tags;
-    if (affected_files !== undefined) updateData.affected_files = affected_files;
-    if (error_messages !== undefined) updateData.error_messages = error_messages;
 
     // Validate status if provided
     if (status !== undefined) {
@@ -687,7 +683,7 @@ app.put('/api/bugs/:id', async (req, res) => {
       .select(`
         id, title, description, content, symptoms, reproduction, solution, 
         status, severity, tags, project_context, project_id, 
-        created_at, updated_at, affected_files, error_messages
+        created_at, updated_at
       `)
       .single();
 
