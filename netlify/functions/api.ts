@@ -719,9 +719,6 @@ app.patch('/api/bugs/:id', async (req, res) => {
     const user = (req as any).user;
     const { id } = req.params;
 
-    console.log('PATCH /api/bugs/:id - Bug ID:', id);
-    console.log('PATCH /api/bugs/:id - User ID:', user?.id);
-
     if (!id) {
       return res.status(400).json({ 
         success: false, 
@@ -735,8 +732,6 @@ app.patch('/api/bugs/:id', async (req, res) => {
       body = JSON.parse(req.body.toString());
     }
 
-    console.log('PATCH /api/bugs/:id - Request body:', body);
-
     const { status } = body;
 
     if (!status) {
@@ -746,22 +741,28 @@ app.patch('/api/bugs/:id', async (req, res) => {
       });
     }
 
-    // Validate status
-    const validStatuses = ['open', 'in-progress', 'resolved', 'wont-fix'];
-    if (!validStatuses.includes(status)) {
+    // Validate status - map MCP statuses to database statuses
+    const statusMapping = {
+      'open': 'open',
+      'in-progress': 'in-progress', 
+      'resolved': 'fixed', // MCP uses 'resolved' but DB uses 'fixed'
+      'wont-fix': 'wont-fix'
+    };
+
+    if (!statusMapping[status]) {
       return res.status(400).json({ 
         success: false, 
-        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` 
+        error: `Invalid status. Must be one of: ${Object.keys(statusMapping).join(', ')}` 
       });
     }
 
-    // Simple update - just status and timestamp
+    const dbStatus = statusMapping[status];
+
+    // Update with minimal fields to avoid any constraint issues
     const updateData = {
-      status: status,
+      status: dbStatus, // Use the mapped database status
       updated_at: new Date().toISOString()
     };
-
-    console.log('PATCH /api/bugs/:id - Update data:', updateData);
 
     const { data, error } = await supabase
       .from('bugs')
@@ -781,12 +782,9 @@ app.patch('/api/bugs/:id', async (req, res) => {
       }
       return res.status(500).json({ 
         success: false, 
-        error: 'Failed to update bug status',
-        details: error.message 
+        error: 'Failed to update bug status'
       });
     }
-
-    console.log('PATCH /api/bugs/:id - Success:', data);
 
     res.json({ 
       success: true, 
@@ -798,8 +796,7 @@ app.patch('/api/bugs/:id', async (req, res) => {
     console.error('PATCH /api/bugs/:id - Unexpected error:', error);
     res.status(500).json({ 
       success: false, 
-      error: 'Internal server error',
-      details: error.message
+      error: 'Internal server error'
     });
   }
 });
