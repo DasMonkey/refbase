@@ -323,12 +323,14 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
             height: 100% !important;
             min-height: 400px !important;
             overflow: auto !important;
+            background-color: ${isDark ? '#111111' : '#ffffff'} !important;
           }
           
           .bn-editor {
             height: 100% !important;
             min-height: 400px !important;
             overflow: auto !important;
+            background-color: ${isDark ? '#111111' : '#ffffff'} !important;
           }
           
           .bn-editor .ProseMirror {
@@ -336,6 +338,14 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
             height: auto !important;
             padding: 2rem 1rem 2rem 1rem !important;
             overflow-y: auto !important;
+            background-color: ${isDark ? '#111111' : '#ffffff'} !important;
+          }
+          
+          /* Override BlockNote's default backgrounds */
+          [data-color-scheme="dark"] .bn-container,
+          [data-color-scheme="dark"] .bn-editor,
+          [data-color-scheme="dark"] .ProseMirror {
+            background-color: #111111 !important;
           }
           
           /* Apply consistent scrollbar styling to BlockNote elements */

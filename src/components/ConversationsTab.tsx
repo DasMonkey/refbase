@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { MessageCircle, Search, Calendar, User, ChevronDown, ChevronRight, Code, FileText, Wrench, Clock, Plus } from 'lucide-react';
+import { FiTrash } from 'react-icons/fi';
 import { Project } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { EnhancedEditor } from './ui/EnhancedEditor';
+import { DeleteConfirmationModal } from './ui/DeleteConfirmationModal';
 import { 
   extractEnhancedToolOutputs,
   extractUserIntent,
@@ -64,13 +66,26 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(() => {
+    const saved = localStorage.getItem(`selectedConversation_${project.id}`);
+    return saved ? { id: saved } as Conversation : null;
+  });
   
   // New Session Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newSessionTitle, setNewSessionTitle] = useState('');
   const [newSessionSource, setNewSessionSource] = useState<string>('claude-code');
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  
+  // Delete conversation states
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
+  
+  // Local editor content state (separate from conversation to avoid complex updates)
+  const [editorContent, setEditorContent] = useState<string>('');
+  
+  // Ref to the current textarea for getting content
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Fetch conversations from the database
   useEffect(() => {
@@ -97,6 +112,52 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
 
     fetchConversations();
   }, [project.id]);
+
+  // Save selectedConversation to localStorage
+  useEffect(() => {
+    if (selectedConversation?.id) {
+      localStorage.setItem(`selectedConversation_${project.id}`, selectedConversation.id);
+    } else {
+      localStorage.removeItem(`selectedConversation_${project.id}`);
+    }
+  }, [selectedConversation?.id, project.id]);
+
+  // Restore selectedConversation from localStorage when conversations are loaded
+  useEffect(() => {
+    if (!loading && conversations.length > 0 && (!selectedConversation || !selectedConversation.title)) {
+      const savedConversationId = localStorage.getItem(`selectedConversation_${project.id}`);
+      if (savedConversationId) {
+        const conversation = conversations.find(c => c.id === savedConversationId);
+        if (conversation) {
+          setSelectedConversation(conversation);
+        }
+      }
+    }
+  }, [loading, conversations, selectedConversation, project.id]);
+
+  // Sync editor content when conversation changes
+  useEffect(() => {
+    if (selectedConversation) {
+      const content = selectedConversation.messages?.[0]?.content || '';
+      setEditorContent(content);
+    } else {
+      setEditorContent('');
+    }
+  }, [selectedConversation?.id]);
+
+  // Auto-save on any click outside the component
+  useEffect(() => {
+    const handleGlobalClick = (event: MouseEvent) => {
+      // If click is outside the sessions tab, auto-save
+      const target = event.target as Element;
+      if (target && !target.closest('[data-tab="sessions"]')) {
+        handleAutoSave();
+      }
+    };
+
+    document.addEventListener('click', handleGlobalClick);
+    return () => document.removeEventListener('click', handleGlobalClick);
+  }, [selectedConversation?.id]);
 
   const filteredConversations = conversations.filter(conv =>
     conv.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -280,33 +341,91 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
     }
   };
 
-  // Handle saving conversation content (for manual sessions) with enhanced technical context
-  const handleSaveConversation = async (conversation: Conversation, newContent: string) => {
-    try {
-      // Get current project context for enhancement
-      const projectContext = await getCurrentProjectContext();
-      
-      // Use enhanced saving with technical context extraction
-      const enhancedMessages = await saveEnhancedManualSession(
-        conversation.id, 
-        newContent, 
-        projectContext
-      );
+  const handleContentChange = (content: string) => {
+    // DO ABSOLUTELY NOTHING - let textarea manage itself
+  };
 
-      // Update the conversation in the local state with enhanced messages
+
+
+  const saveToDatabase = async (content: string) => {
+    if (!selectedConversation || !content) return;
+    
+    try {
+      
+      // Update the first message content in the conversation
+      const updatedMessages = [...(selectedConversation.messages || [])];
+      if (updatedMessages.length === 0) {
+        updatedMessages.push({
+          role: 'user',
+          content: content,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        updatedMessages[0] = { ...updatedMessages[0], content: content };
+      }
+
+      // Save to database using the enhanced MCP helper
+      const projectContext = await getCurrentProjectContext();
+      await saveEnhancedManualSession(selectedConversation.id, content, projectContext);
+      
+      // Update local state
+      const updatedConversation = { ...selectedConversation, messages: updatedMessages };
+      setSelectedConversation(updatedConversation);
       setConversations(prev => prev.map(conv => 
-        conv.id === conversation.id 
-          ? { ...conv, messages: enhancedMessages, updated_at: new Date().toISOString() }
+        conv.id === selectedConversation.id 
+          ? { ...conv, messages: updatedMessages, updated_at: new Date().toISOString() }
           : conv
       ));
-      setSelectedConversation(prev => 
-        prev?.id === conversation.id 
-          ? { ...prev, messages: enhancedMessages, updated_at: new Date().toISOString() }
-          : prev
-      );
+      
     } catch (error) {
-      console.error('Error in handleSaveConversation:', error);
-      alert('Failed to save conversation. Please try again.');
+      console.error('❌ Auto-save failed:', error);
+    }
+  };
+
+  const handleAutoSave = () => {
+    if (textareaRef.current && selectedConversation) {
+      const content = textareaRef.current.value;
+      if (content.trim()) {
+        saveToDatabase(content);
+      }
+    }
+  };
+
+  // Handle delete conversation from list
+  const handleDeleteConversationFromList = (conversation: Conversation) => {
+    setConversationToDelete(conversation);
+    setShowDeleteConfirmation(true);
+  };
+
+  // Confirm delete conversation
+  const confirmDeleteConversation = async () => {
+    if (!conversationToDelete) return;
+    
+    try {
+      // Delete from database
+      const { error } = await supabase
+        .from('conversations')
+        .delete()
+        .eq('id', conversationToDelete.id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Update local state
+      setConversations(prev => prev.filter(conv => conv.id !== conversationToDelete.id));
+      
+      // If the deleted conversation was selected, clear the selection
+      if (selectedConversation?.id === conversationToDelete.id) {
+        setSelectedConversation(null);
+      }
+
+      setShowDeleteConfirmation(false);
+      setConversationToDelete(null);
+      
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+      alert('Failed to delete conversation. Please try again.');
     }
   };
 
@@ -355,11 +474,11 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
               <div className="flex items-center space-x-1">
                 <MessageCircle size={14} />
                 <span className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                  {conversation.messages.length} messages
+                  {conversation.messages?.length || 0} messages
                 </span>
               </div>
             </div>
-            {conversation.tags.length > 0 && (
+            {conversation.tags?.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-3">
                 {conversation.tags.map((tag, index) => (
                   <span
@@ -550,13 +669,28 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
               backgroundColor: isDark ? '#111111' : '#ffffff',
               borderColor: isDark ? '#2a2a2a' : '#e2e8f0'
             }}>
-              <EnhancedEditor
-                content={conversation.messages[0]?.content || ''}
-                onChange={(newContent) => handleSaveConversation(conversation, newContent)}
-                language="markdown"
-                placeholder="Paste your chat content here..."
-                fileName={conversation.title}
-                onBlur={() => {}} // Auto-save handled by onChange
+              <textarea
+                ref={textareaRef}
+                key={`editor-${selectedConversation?.id || 'no-conversation'}`}
+                defaultValue={selectedConversation?.messages?.[0]?.content || ''}
+                placeholder="Type your markdown here..."
+                className="w-full h-full p-4 resize-none focus:outline-none text-sm font-mono leading-6"
+                style={{
+                  backgroundColor: isDark ? '#111111' : '#ffffff',
+                  color: isDark ? '#ffffff' : '#000000',
+                  border: 'none',
+                  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+                }}
+                onBlur={() => {
+                  handleAutoSave();
+                }}
+                onKeyDown={(e) => {
+                  // Auto-save on common navigation keys
+                  if (e.key === 'Tab' || e.key === 'Escape' || (e.ctrlKey && e.key === 's')) {
+                    e.preventDefault();
+                    handleAutoSave();
+                  }
+                }}
               />
             </div>
           </div>
@@ -565,12 +699,9 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
         /* Regular Messages Display */
         <div className={`flex-1 overflow-y-auto p-6 space-y-4 ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}`} 
              style={{ backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }}>
-          {conversation.messages.map((message, index) => (
-          <motion.div
+          {(conversation.messages || []).map((message, index) => (
+          <div
             key={index}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
             className={`flex ${message.role === 'assistant' ? 'justify-start' : 'justify-end'}`}
           >
             <div className={`max-w-4xl ${
@@ -849,7 +980,7 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
             }`} style={{ backgroundColor: isDark ? '#1a1a1a' : '#f1f5f9' }}>
               <User size={16} className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`} />
             </div>
-          </motion.div>
+          </div>
         ))}
         </div>
       )}
@@ -869,7 +1000,7 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
   }
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden" data-tab="sessions">
       {/* Conversations List - Left Panel */}
       <div className={`w-64 border-r flex flex-col flex-shrink-0`} style={{ 
         backgroundColor: isDark ? '#111111' : '#f8fafc',
@@ -879,7 +1010,7 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
         <div className={`p-4 border-b`} style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
           <button
             onClick={() => setShowCreateModal(true)}
-            className={`w-full flex items-center justify-center py-2.5 px-4 text-sm font-medium transition-all duration-200 border rounded-lg mb-3 ${
+            className={`w-full flex items-center justify-center py-2.5 px-4 text-sm font-medium transition-all duration-200 border mb-3 ${
               isDark 
                 ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700 hover:border-gray-600' 
                 : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-300'
@@ -925,18 +1056,23 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
           {filteredConversations.length > 0 ? (
             <div className="space-y-0.5 p-2">
               {filteredConversations.map((conversation) => (
-                <motion.div
+                <div
                   key={conversation.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`p-2 rounded-lg cursor-pointer transition-all duration-200 ${
+                  className={`relative group transition-all duration-100 border-l-2 ${
                     selectedConversation?.id === conversation.id
-                      ? (isDark ? 'bg-blue-900/50 border border-blue-700' : 'bg-blue-50 border border-blue-200')
-                      : (isDark ? 'hover:bg-gray-800' : 'hover:bg-white border border-transparent')
+                      ? (isDark ? 'bg-gray-800 border-l-gray-600' : 'bg-gray-100 border-l-gray-400')
+                      : (isDark ? 'hover:bg-gray-800 border-l-transparent' : 'hover:bg-gray-50 border-l-transparent')
                   }`}
-                  onClick={() => setSelectedConversation(conversation)}
                 >
-                  <div className="space-y-1">
+                  <motion.button
+                    onClick={() => {
+                      setSelectedConversation(conversation);
+                    }}
+                    className="w-full text-left p-2 pr-10"
+                    whileHover={{ x: 8 }}
+                    transition={{ duration: 0.08, ease: "easeOut" }}
+                  >
+                    <div className="space-y-1">
                     <h4 className={`text-sm font-medium truncate ${
                       selectedConversation?.id === conversation.id
                         ? (isDark ? 'text-blue-300' : 'text-blue-900')
@@ -948,15 +1084,32 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
                     <div className="flex items-center justify-between text-xs">
                       <span className={`flex items-center space-x-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                         <MessageCircle size={12} />
-                        <span>{conversation.messages.length}</span>
+                        <span>{conversation.messages?.length || 0}</span>
                       </span>
                       <span className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                         {formatDate(conversation.created_at)}
                       </span>
                     </div>
 
-                  </div>
-                </motion.div>
+                    </div>
+                  </motion.button>
+                  
+                  {/* Delete button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteConversationFromList(conversation);
+                    }}
+                    className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 rounded transition-all duration-200 opacity-0 group-hover:opacity-100 ${
+                      isDark 
+                        ? 'hover:bg-red-900/50 text-red-400 hover:text-red-300' 
+                        : 'hover:bg-red-100 text-red-500 hover:text-red-600'
+                    }`}
+                    title="Delete Conversation"
+                  >
+                    <FiTrash size={12} />
+                  </button>
+                </div>
               ))}
             </div>
           ) : (
@@ -1083,6 +1236,16 @@ export const ConversationsTab: React.FC<ConversationsTabProps> = ({ project }) =
           </motion.div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteConfirmation}
+        onClose={() => setShowDeleteConfirmation(false)}
+        onConfirm={confirmDeleteConversation}
+        title="Delete Conversation"
+        message="Are you sure you want to delete this conversation? All messages and content will be permanently removed."
+        itemName={conversationToDelete?.title}
+      />
     </div>
   );
 };

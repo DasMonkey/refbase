@@ -399,7 +399,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
             <div className="max-w-2xl mx-auto">
               <PromptInputBox
                 onSend={handleAiMessage}
-                placeholder="Ask AI anything about your project..."
+                placeholder="Ask AI anything about your project...(Feature coming soon)"
                 className="shadow-2xl"
                 autoFocus={forceShowAiChat}
               />

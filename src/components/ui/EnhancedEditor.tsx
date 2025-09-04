@@ -215,9 +215,9 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
           onImageInsert(imageMarkdown);
         } else {
           // Insert at cursor position or end of content
-          const cursorPos = editorRef.current?.selectionStart || content.length;
-          const beforeCursor = content.substring(0, cursorPos);
-          const afterCursor = content.substring(cursorPos);
+          const cursorPos = editorRef.current?.selectionStart || (content || '').length;
+          const beforeCursor = (content || '').substring(0, cursorPos);
+          const afterCursor = (content || '').substring(cursorPos);
           const newContent = beforeCursor + (beforeCursor.endsWith('\n') ? '' : '\n') + imageMarkdown + '\n' + afterCursor;
           onChange(newContent);
         }
@@ -357,7 +357,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
 
   // Check if content has diff formatting to hide built-in line numbers
   // More specific pattern: line number + space + +/- + space + content (like "123 + code")
-  const hasDiffFormatting = content.split('\n').some(line => line.match(/^\s*\d+\s+[+-]\s+.+/));
+  const hasDiffFormatting = (content || '').split('\n').some(line => line.match(/^\s*\d+\s+[+-]\s+.+/));
 
   // Memoized render content for optimal performance
   const renderContent = useMemo(() => {
@@ -768,7 +768,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
                 paddingBottom: '1rem'
               }}
             >
-              {content.split('\n').map((_, index) => (
+              {(content || '').split('\n').map((_, index) => (
                 <div
                   key={index}
                   className="text-right pr-2"
@@ -831,7 +831,7 @@ export const EnhancedEditor: React.FC<EnhancedEditorProps> = ({
                 paddingBottom: '1rem'
               }}
             >
-              {content.split('\n').map((_, index) => (
+              {(content || '').split('\n').map((_, index) => (
                 <div
                   key={index}
                   className="text-right pr-2"

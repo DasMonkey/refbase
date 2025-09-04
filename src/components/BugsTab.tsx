@@ -78,7 +78,10 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
   const storagePrefix = filterByFeatureId ? `featureBug_${filterByFeatureId}` : `selectedBug_${project.id}`;
   const subTabStorageKey = filterByFeatureId ? `featureBugSubTab_${filterByFeatureId}` : `bugSubTab_${project.id}`;
   
-  const [selectedBug, setSelectedBug] = useState<BugType | null>(null);
+  const [selectedBug, setSelectedBug] = useState<BugType | null>(() => {
+    const saved = localStorage.getItem(storagePrefix);
+    return saved ? { id: saved } as BugType : null;
+  });
   const [isProjectSwitching, setIsProjectSwitching] = useState(false);
   const currentProjectRef = useRef(project.id);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -217,7 +220,7 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
   useEffect(() => {
     if (!loading && !isProjectSwitching && bugs.length > 0) {
       const savedBugId = localStorage.getItem(storagePrefix);
-      if (savedBugId && !selectedBug) {
+      if (savedBugId && (!selectedBug || !selectedBug.title)) {
         const bug = bugs.find(b => 
           b.id === savedBugId && 
           b.projectId === project.id && 
@@ -1018,7 +1021,7 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
                   ) : (
                     <>
                       <h2 className={`text-xl font-semibold ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>
-                        {selectedBug.title}
+                        {selectedBug.title || 'Loading...'}
                       </h2>
                       <button
                         onClick={handleStartTitleEdit}
@@ -1037,10 +1040,10 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
                     <div className="relative">
                       <button
                         onClick={() => setShowSeverityPopup(!showSeverityPopup)}
-                        className={`px-2 py-1 text-xs font-medium border hover:shadow-md transition-all cursor-pointer ${severityColors[selectedBug.severity]}`}
+                        className={`px-2 py-1 text-xs font-medium border hover:shadow-md transition-all cursor-pointer ${selectedBug.severity ? severityColors[selectedBug.severity] : 'bg-gray-100 text-gray-800 border-gray-200'}`}
                         title="Click to change severity"
                       >
-                        {selectedBug.severity.toUpperCase()}
+                        {selectedBug.severity?.toUpperCase() || 'UNKNOWN'}
                       </button>
                       
                       {showSeverityPopup && (
@@ -1080,6 +1083,7 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
                       <button
                         onClick={() => setShowStatusPopup(!showStatusPopup)}
                         className={`px-2 py-1 text-xs font-medium border hover:shadow-md transition-all cursor-pointer ${
+                          !selectedBug.status ? 'bg-gray-100 text-gray-800 border-gray-200' :
                           selectedBug.status === 'open' ? 'bg-red-100 text-red-800 border-red-200' :
                           selectedBug.status === 'in-progress' ? 'bg-blue-100 text-blue-800 border-blue-200' :
                           selectedBug.status === 'fixed' ? 'bg-green-100 text-green-800 border-green-200' :
@@ -1087,7 +1091,7 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
                         }`}
                         title="Click to change status"
                       >
-                        {selectedBug.status.replace('-', ' ').toUpperCase()}
+                        {selectedBug.status?.replace('-', ' ').toUpperCase() || 'LOADING'}
                       </button>
                       
                       {showStatusPopup && (
@@ -1147,7 +1151,7 @@ export const BugsTab: React.FC<BugsTabProps> = ({ project, filterByFeatureId }) 
                     })()}
                     
                     <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-                      Reported {new Date(selectedBug.createdAt).toLocaleDateString()}
+                      Reported {selectedBug.createdAt ? new Date(selectedBug.createdAt).toLocaleDateString() : 'Unknown date'}
                     </span>
                   </div>
                 </div>

@@ -40,7 +40,10 @@ const documentTypes = [
 export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
   const { documents, createDocument, updateDocument, deleteDocument, loading } = useSupabaseProjects();
   const { isDark } = useTheme();
-  const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
+  const [selectedDoc, setSelectedDoc] = useState<Document | null>(() => {
+    const saved = localStorage.getItem(`selectedDocument_${project.id}`);
+    return saved ? { id: saved } as Document : null;
+  });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState('');
   const [newDocType, setNewDocType] = useState<Document['type']>('custom');
@@ -112,7 +115,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
   useEffect(() => {
     if (!loading && !isProjectSwitching && documents.length > 0) {
       const savedDocId = localStorage.getItem(`selectedDocument_${project.id}`);
-      if (savedDocId && !selectedDoc) {
+      if (savedDocId && (!selectedDoc || !selectedDoc.title)) {
         const doc = documents.find(d => d.id === savedDocId && d.projectId === project.id);
         if (doc) {
           setSelectedDoc(doc);

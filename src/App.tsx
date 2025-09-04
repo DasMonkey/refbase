@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LandingPage } from './pages/LandingPage';
 import { AuthPage } from './pages/AuthPage';
@@ -19,7 +19,10 @@ function App() {
   const { isDark } = useTheme();
   
   // All hooks must be called before any conditional returns
-  const [activeProject, setActiveProject] = useState<Project | null>(null);
+  const [activeProject, setActiveProject] = useState<Project | null>(() => {
+    const savedProjectId = localStorage.getItem('activeProjectId');
+    return savedProjectId ? { id: savedProjectId } as Project : null;
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const saved = localStorage.getItem('sidebarCollapsed');
     return saved ? JSON.parse(saved) : false;
@@ -30,6 +33,10 @@ function App() {
   // AI Chat state management
   const [aiChatOpen, setAiChatOpen] = useState<boolean>(false);
   const [forceShowAiChat, setForceShowAiChat] = useState<boolean>(false);
+  
+  // Anti-flash loading state with minimum display time
+  const [showStableLoading, setShowStableLoading] = useState(true);
+  const loadingStartTime = useRef<number>(Date.now());
 
   // Handle chat bubble click - toggle functionality
   const handleChatBubbleClick = React.useCallback(() => {
@@ -78,20 +85,65 @@ function App() {
     localStorage.setItem('sidebarCollapsed', JSON.stringify(sidebarCollapsed));
   }, [sidebarCollapsed]);
 
-  // Initialize with first project or show welcome state
+  // Save active project to localStorage
   useEffect(() => {
-    if (projects.length > 0 && !activeProject) {
-      setActiveProject(projects[0]);
+    if (activeProject?.id) {
+      localStorage.setItem('activeProjectId', activeProject.id);
+    }
+  }, [activeProject?.id]);
+
+  // Initialize with saved project or first project or show welcome state
+  useEffect(() => {
+    if (projects.length > 0) {
+      const savedProjectId = localStorage.getItem('activeProjectId');
+      
+      if (savedProjectId) {
+        // Try to find the saved project
+        const savedProject = projects.find(p => p.id === savedProjectId);
+        if (savedProject && (!activeProject || activeProject.id !== savedProject.id)) {
+          setActiveProject(savedProject);
+          return;
+        }
+      }
+      
+      // Fallback to first project if no saved project or saved project not found
+      if (!activeProject) {
+        setActiveProject(projects[0]);
+      }
     }
   }, [projects, activeProject]);
 
-  // Show loading while checking authentication
-  if (authLoading) {
+  // Anti-flash loading logic with minimum display time
+  const isActuallyLoading = authLoading || projectsLoading;
+  
+  useEffect(() => {
+    if (!isActuallyLoading) {
+      // Ensure loading screen shows for at least 300ms to prevent flash
+      const elapsed = Date.now() - loadingStartTime.current;
+      const minLoadingTime = 300;
+      
+      if (elapsed < minLoadingTime) {
+        setTimeout(() => {
+          setShowStableLoading(false);
+        }, minLoadingTime - elapsed);
+      } else {
+        setShowStableLoading(false);
+      }
+    } else {
+      setShowStableLoading(true);
+      loadingStartTime.current = Date.now();
+    }
+  }, [isActuallyLoading]);
+  
+  const shouldShowLoading = showStableLoading;
+  if (shouldShowLoading) {
     return (
       <div className={`h-screen flex items-center justify-center`} style={{ backgroundColor: isDark ? '#09090b' : '#f3f4f6' }}>
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-gray-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className={`${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Loading...</p>
+          <p className={`${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+            Loading...
+          </p>
         </div>
       </div>
     );
@@ -260,17 +312,6 @@ function App() {
     </div>
   );
 
-  // Show loading while projects are loading
-  if (projectsLoading) {
-    return (
-      <div className={`h-screen flex items-center justify-center`} style={{ backgroundColor: isDark ? '#09090b' : '#f3f4f6' }}>
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-gray-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className={`${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Loading your projects...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className={`h-screen flex overflow-hidden`} style={{ backgroundColor: isDark ? '#09090b' : '#f3f4f6' }}>

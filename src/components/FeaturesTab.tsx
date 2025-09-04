@@ -75,7 +75,10 @@ const featureFileTypes = [
 export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
   const { features, featureFiles, createFeature, updateFeature, deleteFeature, createFeatureFile, updateFeatureFile, deleteFeatureFile, tasks, createTask, updateTask, deleteTask, loading } = useSupabaseProjects();
   const { isDark } = useTheme();
-  const [selectedFeature, setSelectedFeature] = useState<Feature | null>(null);
+  const [selectedFeature, setSelectedFeature] = useState<Feature | null>(() => {
+    const saved = localStorage.getItem(`selectedFeature_${project.id}`);
+    return saved ? { id: saved } as Feature : null;
+  });
   const [isProjectSwitching, setIsProjectSwitching] = useState(false);
   const currentProjectRef = useRef(project.id);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -271,7 +274,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
   useEffect(() => {
     if (!loading && !isProjectSwitching && features.length > 0) {
       const savedFeatureId = localStorage.getItem(`selectedFeature_${project.id}`);
-      if (savedFeatureId && !selectedFeature) {
+      if (savedFeatureId && (!selectedFeature || !selectedFeature.title)) {
         const feature = features.find(f => f.id === savedFeatureId && f.projectId === project.id);
         if (feature) {
           setSelectedFeature(feature);
