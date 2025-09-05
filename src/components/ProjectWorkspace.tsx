@@ -145,7 +145,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
           className="h-full absolute inset-0" 
           style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}
         >
-          <Dashboard project={project} />
+          <Dashboard project={project} onNavigateToBugs={() => setActiveTab('bugs')} />
         </div>
         <div 
           className="h-full absolute inset-0" 
