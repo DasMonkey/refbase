@@ -4,6 +4,13 @@ import { Plus, AlertCircle, FileText, Lightbulb, ArrowRight } from 'lucide-react
 import { useDashboardTheme, getResponsiveGridClasses } from '../../lib/dashboardTheme';
 import { QuickActionsProps, QuickAction } from '../../types/dashboard';
 
+// Helper to create compatible icon components
+const createIconComponent = (Icon: typeof Plus) => {
+  return ({ size, className }: { size?: number; className?: string }) => (
+    <Icon size={size} className={className} />
+  );
+};
+
 const QuickActions: React.FC<QuickActionsProps> = ({ 
   actions,
   className = '' 
@@ -17,7 +24,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({
       id: 'add-task',
       label: 'Add Task',
       description: 'Create a new task',
-      icon: Plus,
+      icon: createIconComponent(Plus),
       colorType: 'tasks',
       onClick: () => console.log('Add task clicked'),
     },
@@ -25,7 +32,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({
       id: 'report-bug',
       label: 'Report Bug',
       description: 'Submit a bug report',
-      icon: AlertCircle,
+      icon: createIconComponent(AlertCircle),
       colorType: 'bugs',
       onClick: () => console.log('Report bug clicked'),
     },
@@ -33,7 +40,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({
       id: 'new-document',
       label: 'New Document',
       description: 'Create documentation',
-      icon: FileText,
+      icon: createIconComponent(FileText),
       colorType: 'documents',
       onClick: () => console.log('New document clicked'),
     },
@@ -41,7 +48,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({
       id: 'add-feature',
       label: 'Add Feature',
       description: 'Plan a new feature',
-      icon: Lightbulb,
+      icon: createIconComponent(Lightbulb),
       colorType: 'features',
       onClick: () => console.log('Add feature clicked'),
     },

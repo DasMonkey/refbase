@@ -57,11 +57,24 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
     return (saved as TabType) || 'dashboard';
   });
 
+  // Add refresh key to force dashboard re-render
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
+
 
   const { isDark, toggleTheme } = useTheme();
-  const { tasks, features, bugs, documents, files, messages } = useSupabaseProjects();
+  const { tasks, features, bugs, documents, files, messages, events, refreshData } = useSupabaseProjects();
 
   // Note: Removed smart refresh system - will implement proper CRDT-based collaboration instead
+
+  // Handle tab switching with auto-refresh for dashboard
+  const handleTabClick = async (tabId: TabType) => {
+    // Auto-refresh data when switching to dashboard tab
+    if (tabId === 'dashboard') {
+      await refreshData();
+      setDashboardRefreshKey(prev => prev + 1); // Force dashboard re-render
+    }
+    setActiveTab(tabId);
+  };
 
   // Save activeTab to localStorage whenever it changes
   useEffect(() => {
@@ -119,7 +132,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
         const tab = tabs.find(t => t.shortcut === pressedNumber);
         if (tab) {
           event.preventDefault();
-          setActiveTab(tab.id);
+          handleTabClick(tab.id);
         }
       }
       
@@ -145,7 +158,11 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
           className="h-full absolute inset-0" 
           style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}
         >
-          <Dashboard project={project} onNavigateToBugs={() => setActiveTab('bugs')} />
+          <Dashboard 
+            key={dashboardRefreshKey} 
+            project={project} 
+            onNavigateToBugs={() => handleTabClick('bugs')} 
+          />
         </div>
         <div 
           className="h-full absolute inset-0" 
@@ -309,7 +326,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => handleTabClick(tab.id)}
                     className={`relative py-3 px-4 text-sm font-medium transition-all duration-200 pr-12 ${
                       tab.label.length <= 5 ? 'w-[115px]' : 
                       tab.label === 'Calendar' ? 'w-[135px]' : 'w-[155px]'

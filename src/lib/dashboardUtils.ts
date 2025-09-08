@@ -33,11 +33,12 @@ export const calculateDashboardStats = (
   features: Feature[] = []
 ): DashboardStats => {
   const completedTasks = tasks.filter(t => t.status === 'done').length;
+  const incompleteTasks = tasks.filter(t => t.status !== 'done').length; // Tasks that are NOT completed
   const openBugs = bugs.filter(b => b.status === 'open').length;
   const highPriorityTasks = tasks.filter(t => t.priority === 'high').length;
 
   return {
-    totalTasks: tasks.length,
+    totalTasks: incompleteTasks, // Show only incomplete tasks, not all tasks
     completedTasks,
     totalBugs: bugs.length,
     openBugs,
@@ -119,18 +120,20 @@ export const generateRecentActivity = (
 /**
  * Generate metric cards configuration
  */
-export const generateMetricCards = (stats: DashboardStats): MetricCard[] => {
-  const completionRate = stats.totalTasks > 0 
-    ? (stats.completedTasks / stats.totalTasks) * 100 
+export const generateMetricCards = (stats: DashboardStats, allTasks: Task[]): MetricCard[] => {
+  // Calculate actual completion rate based on all tasks (completed + incomplete)
+  const totalAllTasks = allTasks.length;
+  const completionRate = totalAllTasks > 0 
+    ? (stats.completedTasks / totalAllTasks) * 100 
     : 0;
 
   return [
     {
       label: 'Tasks',
-      value: stats.totalTasks,
+      value: stats.totalTasks, // This now shows incomplete tasks only
       icon: Target as React.ComponentType<{ size?: number; className?: string }>,
       colorType: 'tasks',
-      progress: completionRate,
+      progress: completionRate, // Progress based on all tasks
       subtitle: `${stats.completedTasks} completed`,
       trend: {
         value: Math.floor(Math.random() * 5) + 1,

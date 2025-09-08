@@ -15,16 +15,18 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ project, onNavigateToBugs }) => {
-  const { tasks, bugs, documents } = useSupabaseProjects();
+  const { tasks, bugs, documents, features, events } = useSupabaseProjects();
   const theme = useDashboardTheme();
   const motionPrefs = getMotionPreferences();
 
   const projectTasks = tasks.filter(t => t.projectId === project.id);
   const projectBugs = bugs.filter(b => b.projectId === project.id);
   const projectDocs = documents.filter(d => d.projectId === project.id);
+  const projectFeatures = features.filter(f => f.projectId === project.id);
+  const projectEvents = events.filter(e => e.projectId === project.id);
 
   // Calculate dashboard stats using utility function
-  const dashboardStats = calculateDashboardStats(projectTasks, projectBugs, projectDocs);
+  const dashboardStats = calculateDashboardStats(projectTasks, projectBugs, projectDocs, projectFeatures);
   
   // Calculate project progress
   const projectProgress = calculateProjectProgress(projectTasks, projectBugs);
@@ -49,7 +51,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ project, onNavigateToBugs 
         className="w-full"
         variants={motionPrefs.prefersReducedMotion ? motionPrefs.reducedMotion : dashboardAnimations.item}
       >
-        <StatsGrid stats={dashboardStats} />
+        <StatsGrid stats={dashboardStats} allTasksCount={projectTasks.length} features={projectFeatures} events={projectEvents} />
       </motion.div>
 
       {/* Two-Column Layout - Project Progress & Bug Breakdown */}

@@ -1,21 +1,51 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Target, Trophy, Zap, Star } from 'lucide-react';
-import { useDashboardTheme, getSemanticColor, dashboardAnimations, getResponsiveGridClasses } from '../../lib/dashboardTheme';
+import { useDashboardTheme, dashboardAnimations, getResponsiveGridClasses } from '../../lib/dashboardTheme';
 import { StatsGridProps, MetricCard } from '../../types/dashboard';
 
-const StatsGrid: React.FC<StatsGridProps> = ({ stats, className = '' }) => {
+// Helper to create compatible icon components
+const createIconComponent = (Icon: typeof Target) => {
+  return ({ size, className }: { size?: number; className?: string }) => (
+    <Icon size={size} className={className} />
+  );
+};
+
+interface ExtendedStatsGridProps extends StatsGridProps {
+  allTasksCount?: number; // Total tasks including completed ones for correct progress calculation
+  features?: any[]; // Features array to calculate completed features
+  events?: any[]; // Calendar events array to calculate upcoming events
+}
+
+const StatsGrid: React.FC<ExtendedStatsGridProps> = ({ stats, allTasksCount, features = [], events = [], className = '' }) => {
   const theme = useDashboardTheme();
   const responsive = getResponsiveGridClasses();
 
-  // Generate metric cards with proper typing
+  // Calculate correct progress based on all tasks (completed + incomplete)
+  const totalTasks = allTasksCount || (stats.totalTasks + stats.completedTasks);
+  const completionRate = totalTasks > 0 ? (stats.completedTasks / totalTasks) * 100 : 0;
+  
+  // Calculate completed features from the features array
+  const completedFeatures = features.filter((f: any) => f.status === 'implemented').length;
+  
+  // Calculate upcoming events (events in the next 30 days)
+  const now = new Date();
+  const thirtyDaysFromNow = new Date();
+  thirtyDaysFromNow.setDate(now.getDate() + 30);
+  
+  const upcomingEvents = events.filter((e: any) => {
+    const eventDate = new Date(e.date); // Using the formatted 'date' field from loadEvents
+    return eventDate > now && eventDate <= thirtyDaysFromNow;
+  }).length;
+
+  // Generate metric cards with proper typing and correct progress calculation
   const metricCards: MetricCard[] = [
     {
       label: 'Tasks',
-      value: stats.totalTasks,
-      icon: Target,
+      value: stats.totalTasks, // This now shows incomplete tasks only
+      icon: createIconComponent(Target),
       colorType: 'tasks',
-      progress: stats.totalTasks > 0 ? (stats.completedTasks / stats.totalTasks) * 100 : 0,
+      progress: completionRate, // Progress based on all tasks
       subtitle: `${stats.completedTasks} completed`,
       trend: {
         value: Math.floor(Math.random() * 5) + 1,
@@ -23,12 +53,12 @@ const StatsGrid: React.FC<StatsGridProps> = ({ stats, className = '' }) => {
       },
     },
     {
-      label: 'Completed',
-      value: stats.completedTasks,
-      icon: Trophy,
-      colorType: 'completed',
-      progress: stats.totalTasks > 0 ? (stats.completedTasks / stats.totalTasks) * 100 : 0,
-      subtitle: `${Math.round(stats.totalTasks > 0 ? (stats.completedTasks / stats.totalTasks) * 100 : 0)}% done`,
+      label: 'Features',
+      value: stats.totalFeatures,
+      icon: createIconComponent(Trophy),
+      colorType: 'features',
+      progress: stats.totalFeatures > 0 ? (completedFeatures / stats.totalFeatures) * 100 : 0,
+      subtitle: `${completedFeatures} completed`,
       trend: {
         value: Math.floor(Math.random() * 3) + 1,
         isPositive: true,
@@ -37,7 +67,7 @@ const StatsGrid: React.FC<StatsGridProps> = ({ stats, className = '' }) => {
     {
       label: 'Open Bugs',
       value: stats.openBugs,
-      icon: Zap,
+      icon: createIconComponent(Zap),
       colorType: 'bugs',
       progress: stats.totalBugs > 0 ? (stats.openBugs / stats.totalBugs) * 100 : 0,
       subtitle: `${stats.totalBugs} total`,
@@ -47,12 +77,12 @@ const StatsGrid: React.FC<StatsGridProps> = ({ stats, className = '' }) => {
       },
     },
     {
-      label: 'Documents',
-      value: stats.totalDocuments,
-      icon: Star,
+      label: 'Calendar Events',
+      value: upcomingEvents,
+      icon: createIconComponent(Star),
       colorType: 'documents',
-      progress: 75, // Static progress for demo
-      subtitle: 'Knowledge base',
+      progress: events.length > 0 ? (upcomingEvents / events.length) * 100 : 0,
+      subtitle: 'Next 30 days',
       trend: {
         value: Math.floor(Math.random() * 4) + 1,
         isPositive: true,
@@ -75,6 +105,13 @@ const StatsGrid: React.FC<StatsGridProps> = ({ stats, className = '' }) => {
           text: 'text-green-500',
           bgLight: 'bg-green-500/10',
           gradient: 'from-green-500 to-green-600',
+        };
+      case 'features':
+        return {
+          bg: 'bg-purple-500',
+          text: 'text-purple-500',
+          bgLight: 'bg-purple-500/10',
+          gradient: 'from-purple-500 to-purple-600',
         };
       case 'bugs':
         return {

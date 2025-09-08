@@ -82,6 +82,7 @@ export const useSupabaseProjects = () => {
           loadFeatures(projectIds),
           loadFeatureData(projectIds),
           loadBugs(projectIds),
+          loadEvents(projectIds),
           loadMessages(projectIds),
           loadFiles(projectIds)
         ]);
@@ -234,6 +235,28 @@ export const useSupabaseProjects = () => {
         updatedAt: new Date(b.updated_at)
       }));
       setBugs(formattedBugs);
+    }
+  };
+
+  const loadEvents = async (projectIds: string[]) => {
+    const { data, error } = await supabase
+      .from('calendar_events')
+      .select('*')
+      .in('project_id', projectIds)
+      .order('event_date', { ascending: true });
+
+    if (!error && data) {
+      const formattedEvents = data.map(e => ({
+        ...e,
+        projectId: e.project_id,
+        date: e.event_date,
+        startTime: e.start_time,
+        endTime: e.end_time,
+        eventType: e.event_type,
+        createdAt: new Date(e.created_at),
+        updatedAt: new Date(e.updated_at)
+      }));
+      setEvents(formattedEvents);
     }
   };
 
