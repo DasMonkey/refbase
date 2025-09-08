@@ -101,7 +101,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `https://refbase.dev/dashboard`
+          redirectTo: `https://refbase.dev`
         }
       });
       if (error) throw error;
