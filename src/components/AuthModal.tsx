@@ -101,7 +101,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/dashboard`
+          redirectTo: `https://refbase.dev/dashboard`
         }
       });
       if (error) throw error;
@@ -154,7 +154,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           <p className={`text-center ${isDark ? 'text-gray-300' : 'text-gray-600'} mb-6`}>
             {isSignUp 
               ? 'Join thousands of engineering teams building better products'
-              : 'Sign in to your ProjectFlow account'
+              : 'Sign in to your Refbase account'
             }
           </p>
 
