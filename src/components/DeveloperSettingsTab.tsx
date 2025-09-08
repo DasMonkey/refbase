@@ -24,9 +24,10 @@ import {
 
 interface DeveloperSettingsTabProps {
   isDark: boolean;
+  onViewDocs?: () => void;
 }
 
-export const DeveloperSettingsTab: React.FC<DeveloperSettingsTabProps> = ({ isDark }) => {
+export const DeveloperSettingsTab: React.FC<DeveloperSettingsTabProps> = ({ isDark, onViewDocs }) => {
   const { user, isAuthenticated } = useAuth();
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
   const [copyState, setCopyState] = useState<CopyState>(createInitialCopyState());
@@ -548,11 +549,9 @@ export const DeveloperSettingsTab: React.FC<DeveloperSettingsTabProps> = ({ isDa
                   Learn more about RefBase API endpoints and usage
                 </p>
               </div>
-              <a
-                href="https://refbase.dev/docs/api"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="View RefBase API documentation (opens in new tab)"
+              <button
+                onClick={onViewDocs}
+                aria-label="View RefBase API documentation"
                 className={`flex items-center justify-center px-4 py-3 sm:py-2 text-sm rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 w-full sm:w-auto min-h-[44px] touch-manipulation ${isDark
                   ? 'bg-gray-600 hover:bg-gray-500 active:bg-gray-700 text-gray-200 focus:ring-gray-500'
                   : 'bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-700 focus:ring-gray-500'
@@ -560,7 +559,7 @@ export const DeveloperSettingsTab: React.FC<DeveloperSettingsTabProps> = ({ isDa
               >
                 <span className="font-medium">View Docs</span>
                 <ExternalLink size={16} className="ml-2" aria-hidden="true" />
-              </a>
+              </button>
             </div>
           </div>
         </div>

@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Lightbulb, Code, TestTube, Rocket, ArrowRight, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { useDashboardTheme, dashboardAnimations, getMotionPreferences } from '../../lib/dashboardTheme';
+import { Feature } from '../../types';
 
 interface PipelineStage {
   id: string;
@@ -15,13 +16,8 @@ interface PipelineStage {
   status: 'active' | 'blocked' | 'completed';
 }
 
-interface FeatureType {
-  type: 'core' | 'enhancement' | 'integration' | 'ai';
-  count: number;
-  color: string;
-}
-
 interface FeaturePipelineProps {
+  features: Feature[];
   stages?: PipelineStage[];
   featureTypes?: FeatureType[];
   onStageClick?: (stageId: string) => void;
@@ -30,6 +26,7 @@ interface FeaturePipelineProps {
 }
 
 const FeaturePipeline: React.FC<FeaturePipelineProps> = ({ 
+  features,
   stages,
   featureTypes,
   onStageClick,
@@ -39,13 +36,19 @@ const FeaturePipeline: React.FC<FeaturePipelineProps> = ({
   const theme = useDashboardTheme();
   const motionPrefs = getMotionPreferences();
 
-  // Mock data for pipeline stages
+  // Calculate real feature counts by status
+  const plannedCount = features.filter(f => f.status === 'planned').length;
+  const inProgressCount = features.filter(f => f.status === 'in-progress').length;
+  const testingCount = features.filter(f => f.status === 'testing').length;
+  const implementedCount = features.filter(f => f.status === 'implemented').length;
+
+  // Real data for pipeline stages based on database statuses
   const defaultStages: PipelineStage[] = [
     {
       id: 'ideation',
       name: 'Ideation',
       description: 'Feature concepts and planning',
-      count: 12,
+      count: plannedCount,
       icon: Lightbulb,
       color: 'text-yellow-500',
       bgColor: 'bg-yellow-500',
@@ -56,7 +59,7 @@ const FeaturePipeline: React.FC<FeaturePipelineProps> = ({
       id: 'development',
       name: 'Development',
       description: 'Active coding and implementation',
-      count: 8,
+      count: inProgressCount,
       icon: Code,
       color: 'text-blue-500',
       bgColor: 'bg-blue-500',
@@ -67,18 +70,18 @@ const FeaturePipeline: React.FC<FeaturePipelineProps> = ({
       id: 'testing',
       name: 'Testing',
       description: 'QA and validation phase',
-      count: 5,
+      count: testingCount,
       icon: TestTube,
       color: 'text-purple-500',
       bgColor: 'bg-purple-500',
       borderColor: 'border-purple-500/30',
-      status: 'blocked',
+      status: testingCount > 0 ? 'active' : 'blocked',
     },
     {
       id: 'deployment',
       name: 'Deployment',
       description: 'Ready for production release',
-      count: 3,
+      count: implementedCount,
       icon: Rocket,
       color: 'text-green-500',
       bgColor: 'bg-green-500',
@@ -87,16 +90,7 @@ const FeaturePipeline: React.FC<FeaturePipelineProps> = ({
     },
   ];
 
-  // Mock data for feature types
-  const defaultFeatureTypes: FeatureType[] = [
-    { type: 'core', count: 15, color: 'bg-blue-500' },
-    { type: 'enhancement', count: 8, color: 'bg-green-500' },
-    { type: 'integration', count: 3, color: 'bg-purple-500' },
-    { type: 'ai', count: 2, color: 'bg-orange-500' },
-  ];
-
   const pipelineData = stages || defaultStages;
-  const typeData = featureTypes || defaultFeatureTypes;
   const totalFeatures = pipelineData.reduce((sum, stage) => sum + stage.count, 0);
 
   const getStatusIcon = (status: PipelineStage['status']) => {
@@ -240,48 +234,6 @@ const FeaturePipeline: React.FC<FeaturePipelineProps> = ({
         })}
       </motion.div>
 
-      {/* Feature Types Breakdown */}
-      <motion.div
-        className={`
-          p-3 sm:p-4 
-          ${theme.secondaryBackground} 
-          border ${theme.border}
-        `}
-        variants={motionPrefs.prefersReducedMotion ? motionPrefs.reducedMotion : dashboardAnimations.fadeInDelayed(1.0)}
-        initial="hidden"
-        animate="visible"
-      >
-        <h4 className={`text-sm font-medium ${theme.text} mb-3`}>
-          Feature Types Distribution
-        </h4>
-        
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {typeData.map((type) => (
-            <div key={type.type} className="text-center">
-              <div className={`w-full h-2 ${theme.secondaryBackground} overflow-hidden mb-2`}>
-                <motion.div
-                  className={`h-full ${type.color}`}
-                  initial={{ width: 0 }}
-                  animate={{ 
-                    width: totalFeatures > 0 ? `${(type.count / totalFeatures) * 100}%` : '0%' 
-                  }}
-                  transition={{ 
-                    duration: 0.8, 
-                    delay: 1.2,
-                    ease: 'easeOut'
-                  }}
-                />
-              </div>
-              <p className={`text-xs font-medium ${theme.text} capitalize`}>
-                {type.type}
-              </p>
-              <p className={`text-lg font-bold ${theme.text}`}>
-                {type.count}
-              </p>
-            </div>
-          ))}
-        </div>
-      </motion.div>
     </motion.div>
   );
 };

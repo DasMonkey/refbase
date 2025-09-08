@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Settings, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { Plus, Settings, ChevronLeft, ChevronRight, LogOut, MoreVertical, Trash2, Edit, Check, X } from 'lucide-react';
 import { Project } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { SettingsModal } from './SettingsModal';
@@ -10,8 +10,11 @@ interface SidebarProps {
   activeProject: Project | null;
   onProjectSelect: (project: Project) => void;
   onCreateProject: () => void;
+  onDeleteProject: (projectId: string) => void;
+  onUpdateProject?: (projectId: string, updates: Partial<Project>) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  onViewDocs?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -19,14 +22,140 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeProject,
   onProjectSelect,
   onCreateProject,
+  onDeleteProject,
+  onUpdateProject,
   collapsed,
   onToggleCollapse,
+  onViewDocs,
 }) => {
   const { user, signOut } = useAuth();
   const [showSettings, setShowSettings] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [deleteConfirmProject, setDeleteConfirmProject] = useState<Project | null>(null);
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const buttonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const handleSignOut = async () => {
     await signOut();
+  };
+
+  // Handle clicking outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!openMenuId) return;
+      
+      const target = event.target as Node;
+      const dropdown = dropdownRefs.current[openMenuId];
+      const button = buttonRefs.current[openMenuId];
+      
+      // Don't close if clicking on the dropdown or the button
+      if (dropdown?.contains(target) || button?.contains(target)) {
+        return;
+      }
+      
+      setOpenMenuId(null);
+    };
+
+    if (openMenuId) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [openMenuId]);
+
+  const handleMenuToggle = (projectId: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent project selection
+    
+    if (openMenuId === projectId) {
+      setOpenMenuId(null);
+    } else {
+      const buttonElement = buttonRefs.current[projectId];
+      if (buttonElement) {
+        const rect = buttonElement.getBoundingClientRect();
+        setMenuPosition({
+          top: rect.top,
+          left: rect.right + 8 // 8px margin from the button
+        });
+      }
+      setOpenMenuId(projectId);
+    }
+  };
+
+  const handleDeleteClick = (project: Project, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setDeleteConfirmProject(project);
+    setOpenMenuId(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (deleteConfirmProject) {
+      await onDeleteProject(deleteConfirmProject.id);
+      setDeleteConfirmProject(null);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteConfirmProject(null);
+  };
+
+  const handleRenameClick = (project: Project, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setRenamingProjectId(project.id);
+    setRenameValue(project.name);
+    setOpenMenuId(null);
+    // Focus the input after state update
+    setTimeout(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }, 0);
+  };
+
+  const handleRenameSave = async (project: Project) => {
+    const trimmedName = renameValue.trim();
+    
+    // Validation checks
+    if (!onUpdateProject || trimmedName === '' || trimmedName === project.name) {
+      handleRenameCancel();
+      return;
+    }
+    
+    // Check if name is too long
+    if (trimmedName.length > 50) {
+      console.error('Project name too long (max 50 characters)');
+      return;
+    }
+    
+    // Check for duplicate names
+    if (projects.some(p => p.id !== project.id && p.name.toLowerCase() === trimmedName.toLowerCase())) {
+      console.error('A project with this name already exists');
+      return;
+    }
+
+    try {
+      await onUpdateProject(project.id, { name: trimmedName });
+      setRenamingProjectId(null);
+      setRenameValue('');
+    } catch (error) {
+      console.error('Error renaming project:', error);
+      // Reset to original name on error
+      setRenameValue(project.name);
+    }
+  };
+
+  const handleRenameCancel = () => {
+    setRenamingProjectId(null);
+    setRenameValue('');
+  };
+
+  const handleRenameKeyPress = (event: React.KeyboardEvent, project: Project) => {
+    if (event.key === 'Enter') {
+      handleRenameSave(project);
+    } else if (event.key === 'Escape') {
+      handleRenameCancel();
+    }
   };
 
   return (
@@ -87,80 +216,113 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 key={project.id}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
+                className="relative"
               >
-                <button
-                  onClick={() => onProjectSelect(project)}
-                  className={`w-full flex items-center rounded-lg transition-all ${
-                    activeProject?.id === project.id
-                      ? 'bg-gray-600 shadow-lg'
-                      : 'hover:bg-gray-700'
-                  }`}
-                  style={{ height: '56px', padding: '12px' }}
-                  title={collapsed ? project.name : undefined}
-                >
-                  <div className="w-full flex items-center relative">
-                    <motion.div
-                      className="flex items-center absolute"
-                      initial={false}
-                      animate={{
-                        x: collapsed ? '50%' : '0%',
-                        translateX: collapsed ? '-50%' : '0%'
-                      }}
-                      transition={{ duration: 0.3, ease: "easeInOut" }}
-                      style={{ width: collapsed ? '32px' : 'auto' }}
+                {renamingProjectId === project.id ? (
+                  // Rename mode - no nested buttons
+                  <div
+                    className={`w-full flex items-center rounded-lg transition-all ${
+                      activeProject?.id === project.id
+                        ? 'bg-gray-600 shadow-lg'
+                        : 'bg-gray-700'
+                    }`}
+                    style={{ height: '56px', padding: '12px' }}
+                  >
+                    <div
+                      className="rounded-lg flex items-center justify-center text-white font-semibold flex-shrink-0"
+                      style={{ width: '32px', height: '32px', backgroundColor: project.color }}
                     >
-                      <div
-                        className="rounded-lg flex items-center justify-center text-white font-semibold flex-shrink-0"
-                        style={{ width: '32px', height: '32px', backgroundColor: project.color }}
-                      >
-                        {project.icon}
+                      {project.icon}
+                    </div>
+                    
+                    <div className="min-w-0 flex-1 ml-3 relative">
+                      <input
+                        ref={renameInputRef}
+                        type="text"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => handleRenameKeyPress(e, project)}
+                        className="w-full bg-gray-800 text-white text-sm px-2 py-1 pr-14 rounded border border-gray-600 focus:border-gray-400 focus:outline-none"
+                      />
+                      <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center space-x-1">
+                        <button
+                          onClick={() => handleRenameSave(project)}
+                          className="p-0.5 hover:bg-gray-600 rounded text-green-400 hover:text-green-300 w-5 h-5 flex items-center justify-center"
+                          title="Save"
+                        >
+                          <Check size={12} />
+                        </button>
+                        <button
+                          onClick={handleRenameCancel}
+                          className="p-0.5 hover:bg-gray-600 rounded text-red-400 hover:text-red-300 w-5 h-5 flex items-center justify-center"
+                          title="Cancel"
+                        >
+                          <X size={12} />
+                        </button>
                       </div>
-                      
-                      <motion.div
-                        className="min-w-0 text-left overflow-hidden"
-                        style={{ 
-                          height: '32px', 
-                          display: 'flex', 
-                          flexDirection: 'column', 
-                          justifyContent: 'center', 
-                          marginLeft: '12px',
-                          maxWidth: collapsed ? '0px' : '180px'
-                        }}
-                        initial={false}
-                        animate={{
-                          opacity: collapsed ? 0 : 1,
-                          width: collapsed ? 0 : '180px'
-                        }}
-                        transition={{ duration: 0.3, ease: "easeInOut" }}
-                      >
-                        <div 
-                          className="font-medium text-sm truncate" 
-                          style={{ 
-                            lineHeight: '16px',
-                            maxWidth: '100%',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                          }}
-                        >
-                          {project.name}
-                        </div>
-                        <div 
-                          className="text-xs text-gray-400 truncate" 
-                          style={{ 
-                            lineHeight: '12px',
-                            maxWidth: '100%',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                          }}
-                        >
-                          {project.description}
-                        </div>
-                      </motion.div>
-                    </motion.div>
+                    </div>
                   </div>
-                </button>
+                ) : (
+                  // Normal mode - with project selection button
+                  <div
+                    className={`w-full flex items-center rounded-lg transition-all ${
+                      activeProject?.id === project.id
+                        ? 'bg-gray-600 shadow-lg'
+                        : 'hover:bg-gray-700'
+                    }`}
+                    style={{ height: '56px', padding: '12px' }}
+                  >
+                    {/* Project selection button - takes up most of the space */}
+                    <button
+                      onClick={() => onProjectSelect(project)}
+                      className="flex items-center min-w-0 flex-1 text-left"
+                      title={collapsed ? project.name : undefined}
+                    >
+                      {/* Project icon - always centered when collapsed */}
+                      {collapsed ? (
+                        <div className="w-full flex justify-center">
+                          <div
+                            className="rounded-lg flex items-center justify-center text-white font-semibold flex-shrink-0"
+                            style={{ width: '32px', height: '32px', backgroundColor: project.color }}
+                          >
+                            {project.icon}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center min-w-0 flex-1">
+                          <div
+                            className="rounded-lg flex items-center justify-center text-white font-semibold flex-shrink-0"
+                            style={{ width: '32px', height: '32px', backgroundColor: project.color }}
+                          >
+                            {project.icon}
+                          </div>
+                          
+                          <div className="min-w-0 flex-1 ml-3">
+                            <div className="font-medium text-sm truncate text-white">
+                              {project.name}
+                            </div>
+                            <div className="text-xs text-gray-400 truncate">
+                              {project.description}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </button>
+
+                    {/* 3-dots menu button - separate button, not nested */}
+                    {!collapsed && (
+                      <button
+                        ref={(el) => (buttonRefs.current[project.id] = el)}
+                        onClick={(e) => handleMenuToggle(project.id, e)}
+                        className="flex-shrink-0 ml-2 p-1 hover:bg-gray-600 rounded transition-colors opacity-70 hover:opacity-100"
+                        title="Project options"
+                      >
+                        <MoreVertical size={16} className="text-gray-300" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
               </motion.div>
             ))}
           </div>
@@ -282,11 +444,100 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </motion.div>
 
+      {/* Dropdown menu - positioned globally outside sidebar */}
+      <AnimatePresence>
+        {!collapsed && openMenuId && (
+          <motion.div
+            ref={(el) => (dropdownRefs.current[openMenuId] = el)}
+            initial={{ opacity: 0, scale: 0.95, x: -10 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            exit={{ opacity: 0, scale: 0.95, x: -10 }}
+            transition={{ duration: 0.15 }}
+            className="fixed z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-xl min-w-[160px]"
+            style={{
+              top: `${menuPosition.top}px`,
+              left: `${menuPosition.left}px`
+            }}
+          >
+            <div className="p-1">
+              <button
+                onClick={(e) => {
+                  const project = projects.find(p => p.id === openMenuId);
+                  if (project) handleRenameClick(project, e);
+                }}
+                className="w-full flex items-center px-3 py-2 text-gray-200 hover:bg-gray-700 hover:text-white transition-colors rounded-lg text-sm font-medium mb-1"
+              >
+                <Edit size={16} className="mr-2" />
+                Rename
+              </button>
+              <button
+                onClick={(e) => {
+                  const project = projects.find(p => p.id === openMenuId);
+                  if (project) handleDeleteClick(project, e);
+                }}
+                className="w-full flex items-center px-3 py-2 text-white bg-red-600 hover:bg-red-700 transition-colors rounded-lg text-sm font-medium"
+              >
+                <Trash2 size={16} className="mr-2" />
+                Delete Project
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Settings Modal */}
       <SettingsModal
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
+        onViewDocs={onViewDocs}
       />
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteConfirmProject && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-gray-700"
+            >
+              <div className="flex items-start space-x-4">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 bg-red-900/30 rounded-full flex items-center justify-center">
+                    <Trash2 size={20} className="text-red-400" />
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-medium text-white mb-2">
+                    Delete Project
+                  </h3>
+                  <p className="text-gray-300 text-sm mb-1">
+                    Are you sure you want to delete "{deleteConfirmProject.name}"?
+                  </p>
+                  <p className="text-red-400 text-xs mb-6">
+                    This action cannot be undone. All documents, tasks, features, and bugs associated with this project will be permanently deleted.
+                  </p>
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={handleCancelDelete}
+                      className="flex-1 px-4 py-2 text-sm border border-gray-600 text-gray-300 rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleConfirmDelete}
+                      className="flex-1 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      Delete Project
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </>
   );
 };

@@ -51,7 +51,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({ project }) => {
       }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>Project Chat</h2>
+            <h2 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>Project Chat (Coming soon)</h2>
             <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Team communication for {project.name}</p>
           </div>
           

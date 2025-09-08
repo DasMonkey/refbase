@@ -4,6 +4,7 @@ import { Project } from '../types';
 import { useSupabaseProjects } from '../hooks/useSupabaseProjects';
 import { useDashboardTheme, dashboardAnimations, getMotionPreferences } from '../lib/dashboardTheme';
 import { calculateDashboardStats, calculateProjectProgress } from '../lib/dashboardUtils';
+import { useTheme } from '../contexts/ThemeContext';
 import StatsGrid from './dashboard/StatsGrid';
 import ProjectProgress from './dashboard/ProjectProgress';
 import BugSeverityBreakdown from './dashboard/BugSeverityBreakdown';
@@ -16,6 +17,7 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ project, onNavigateToBugs }) => {
   const { tasks, bugs, documents, features, events } = useSupabaseProjects();
+  const { isDark } = useTheme();
   const theme = useDashboardTheme();
   const motionPrefs = getMotionPreferences();
 
@@ -40,6 +42,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ project, onNavigateToBugs 
         space-y-4 sm:space-y-5 md:space-y-6 
         overflow-y-auto h-full 
         ${theme.background}
+        ${isDark ? 'dark-scrollbar' : 'light-scrollbar'}
         transition-all duration-200
       `}
       variants={motionPrefs.prefersReducedMotion ? motionPrefs.reducedMotion : dashboardAnimations.container}
@@ -95,6 +98,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ project, onNavigateToBugs 
         variants={motionPrefs.prefersReducedMotion ? motionPrefs.reducedMotion : dashboardAnimations.slideInLeft}
       >
         <FeaturePipeline 
+          features={projectFeatures}
           onStageClick={(stageId) => console.log('Navigate to stage:', stageId)}
           onViewAll={() => console.log('Navigate to features view')}
         />

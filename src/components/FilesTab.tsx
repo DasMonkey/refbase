@@ -85,7 +85,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({ project }) => {
       }}>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>Files</h2>
+            <h2 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>Files (Coming soon)</h2>
             <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{files.length} files uploaded</p>
           </div>
           

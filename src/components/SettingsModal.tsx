@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   X, 
@@ -15,15 +15,20 @@ import {
   Camera,
   Save,
   Key,
-  Code2
+  Code2,
+  FileText,
+  ExternalLink,
+  Github
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../hooks/useAuth';
 import { ApiStorageTab } from './ApiStorageTab';
 import { ApiKeyManagementTab } from './ApiKeyManagementTab';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onViewDocs?: () => void;
 }
 
 const settingsTabs = [
@@ -34,23 +39,59 @@ const settingsTabs = [
   { id: 'language', label: 'Language & Region', icon: Globe },
   { id: 'developer', label: 'API Keys', icon: Code2 },
   { id: 'api-storage', label: 'API Storage', icon: Key },
-  { id: 'data', label: 'Data & Storage', icon: Download },
+  { id: 'data', label: 'Data & Storage (coming soon)', icon: Download },
+  { id: 'mcp-docs', label: 'RefBase MCP', icon: FileText },
 ];
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onViewDocs }) => {
   const { isDark, toggleTheme } = useTheme();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   const [hasChanges, setHasChanges] = useState(false);
 
-  // User profile state
-  const [userProfile, setUserProfile] = useState({
-    name: localStorage.getItem('userName') || 'John Doe',
-    email: 'john.doe@example.com',
-    phone: '+1 (555) 123-4567',
-    location: 'San Francisco, CA',
-    bio: 'Product Manager passionate about building great user experiences.',
-    avatar: '',
+  // Helper function to get display name from email
+  const getDisplayNameFromEmail = (email: string) => {
+    return email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  // User profile state - initialize with real user data
+  const [userProfile, setUserProfile] = useState(() => {
+    const userName = user?.user_metadata?.full_name || 
+                    user?.user_metadata?.name || 
+                    localStorage.getItem('userName') || 
+                    (user?.email ? getDisplayNameFromEmail(user.email) : 'User');
+    
+    return {
+      name: userName,
+      email: user?.email || '',
+      phone: user?.user_metadata?.phone || '',
+      location: user?.user_metadata?.location || '',
+      bio: user?.user_metadata?.bio || '',
+      avatar: user?.user_metadata?.avatar_url || '',
+    };
   });
+
+  // Update profile when user data changes
+  useEffect(() => {
+    if (user) {
+      const userName = user.user_metadata?.full_name || 
+                      user.user_metadata?.name || 
+                      localStorage.getItem('userName') || 
+                      (user.email ? getDisplayNameFromEmail(user.email) : 'User');
+      
+      setUserProfile({
+        name: userName,
+        email: user.email || '',
+        phone: user.user_metadata?.phone || '',
+        location: user.user_metadata?.location || '',
+        bio: user.user_metadata?.bio || '',
+        avatar: user.user_metadata?.avatar_url || '',
+      });
+      
+      // Clear changes flag when user data is refreshed
+      setHasChanges(false);
+    }
+  }, [user]);
 
   // Notification settings
   const [notifications, setNotifications] = useState({
@@ -80,10 +121,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     timeFormat: '12h',
   });
 
-  const handleSaveProfile = () => {
-    localStorage.setItem('userName', userProfile.name);
-    setHasChanges(false);
-    // In a real app, this would make an API call
+  const handleSaveProfile = async () => {
+    try {
+      // Import supabase dynamically
+      const { supabase } = await import('../lib/supabase');
+      
+      // Update user profile in Supabase Auth
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          full_name: userProfile.name,
+          phone: userProfile.phone,
+          location: userProfile.location,
+          bio: userProfile.bio,
+          avatar_url: userProfile.avatar
+        }
+      });
+
+      if (error) {
+        console.error('Error updating profile:', error);
+        alert('Failed to save profile. Please try again.');
+        return;
+      }
+
+      // Also save to localStorage as backup
+      localStorage.setItem('userName', userProfile.name);
+      setHasChanges(false);
+      
+      // Show success message
+      alert('Profile updated successfully!');
+      
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      alert('Failed to save profile. Please try again.');
+    }
   };
 
   const handleProfileChange = (field: string, value: string) => {
@@ -512,6 +582,75 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   >
                     <Trash2 size={16} className="mr-2" />
                     Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'mcp-docs':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'} mb-4`}>RefBase MCP</h3>
+              <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-6`}>
+                Access comprehensive documentation for RefBase MCP (Model Context Protocol) tools and integration.
+              </p>
+              
+              {/* GitHub Repository Section */}
+              <div className={`p-4 border ${isDark ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-gray-50'} rounded-lg mb-4`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 mr-4">
+                    <div className="flex items-center mb-2">
+                      <Github size={18} className={`${isDark ? 'text-gray-300' : 'text-gray-600'} mr-2`} />
+                      <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        RefBase MCP Server
+                      </p>
+                    </div>
+                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-3 leading-relaxed`}>
+                      The RefBase MCP server works hand-in-hand with RefBase webapp to provide seamless integration with various IDE tools.                    </p>
+                    <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} space-y-1`}>
+                      <p>• Save and search conversations with technical context</p>
+                      <p>• Access working features and implementation patterns</p>
+                      <p>• Track and manage bugs across projects</p>
+                      <p>• Get project insights and similar project recommendations</p>
+                    </div>
+                  </div>
+                  <a
+                    href="https://github.com/DasMonkey/refbase-mcp"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`flex items-center justify-center px-4 py-2 text-sm rounded-lg transition-colors flex-shrink-0 ${
+                      isDark ? 'bg-gray-600 hover:bg-gray-500 text-white' : 'bg-gray-600 hover:bg-gray-700 text-white'
+                    }`}
+                  >
+                    <Github size={16} className="mr-2" />
+                    <span className="font-medium">View on GitHub</span>
+                    <ExternalLink size={14} className="ml-1" />
+                  </a>
+                </div>
+              </div>
+              
+              {/* Documentation Section */}
+              <div className={`p-4 border ${isDark ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-gray-50'} rounded-lg`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'} mb-1`}>
+                      View Documentation
+                    </p>
+                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Complete guide to MCP tools, API endpoints, configuration, and examples
+                    </p>
+                  </div>
+                  <button
+                    onClick={onViewDocs}
+                    className={`flex items-center justify-center px-4 py-2 text-sm rounded-lg transition-colors whitespace-nowrap ${
+                      isDark ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    }`}
+                  >
+                    <span className="font-medium">View Docs</span>
+                    <FileText size={16} className="ml-2" />
                   </button>
                 </div>
               </div>

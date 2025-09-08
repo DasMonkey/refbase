@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { LandingPage } from './pages/LandingPage';
 import { AuthPage } from './pages/AuthPage';
+import { DocumentationPage } from './pages/DocumentationPage';
 import { Sidebar } from './components/Sidebar';
 import { ProjectWorkspace } from './components/ProjectWorkspace';
 import { CreateProjectModal } from './components/CreateProjectModal';
@@ -14,9 +15,18 @@ import { useTheme } from './contexts/ThemeContext';
 import { Project } from './types';
 
 function App() {
-  const { user, loading: authLoading, isAuthenticated } = useAuth();
-  const { projects, createProject, loading: projectsLoading } = useSupabaseProjects();
+  const { loading: authLoading, isAuthenticated } = useAuth();
+  const { projects, createProject, deleteProject, updateProject, loading: projectsLoading } = useSupabaseProjects();
   const { isDark } = useTheme();
+
+  // Handle /dashboard redirect after OAuth
+  useEffect(() => {
+    const currentPath = window.location.pathname;
+    if (currentPath === '/dashboard' && isAuthenticated && !authLoading) {
+      // Clear the /dashboard from URL and show the main dashboard
+      window.history.replaceState(null, '', '/');
+    }
+  }, [isAuthenticated, authLoading]);
   
   // All hooks must be called before any conditional returns
   const [activeProject, setActiveProject] = useState<Project | null>(() => {
@@ -29,6 +39,7 @@ function App() {
   });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAuthPage, setShowAuthPage] = useState(false);
+  const [showDocumentationPage, setShowDocumentationPage] = useState(false);
   
   // AI Chat state management
   const [aiChatOpen, setAiChatOpen] = useState<boolean>(false);
@@ -62,7 +73,7 @@ function App() {
   // Track user activity for background sync
   useEffect(() => {
     const updateActivity = () => {
-      (window as any).lastUserActivity = Date.now();
+      (window as unknown as { lastUserActivity: number }).lastUserActivity = Date.now();
     };
 
     // Track various user interactions
@@ -110,11 +121,19 @@ function App() {
       if (!activeProject) {
         setActiveProject(projects[0]);
       }
+    } else {
+      // Clear activeProject when no projects exist
+      if (activeProject) {
+        setActiveProject(null);
+        localStorage.removeItem('activeProjectId');
+      }
     }
   }, [projects, activeProject]);
 
   // Anti-flash loading logic with minimum display time
-  const isActuallyLoading = authLoading || projectsLoading;
+  // Also show loading if on /dashboard route (OAuth callback) while auth is resolving
+  const isOnDashboardRoute = window.location.pathname === '/dashboard';
+  const isActuallyLoading = authLoading || projectsLoading || (isOnDashboardRoute && !isAuthenticated);
   
   useEffect(() => {
     if (!isActuallyLoading) {
@@ -149,6 +168,13 @@ function App() {
     );
   }
 
+  // Show documentation page if requested
+  if (showDocumentationPage) {
+    return (
+      <DocumentationPage onBack={() => setShowDocumentationPage(false)} />
+    );
+  }
+
   // If user is not authenticated, show landing page
   if (!isAuthenticated) {
     if (showAuthPage) {
@@ -177,6 +203,30 @@ function App() {
     }
   };
 
+  const handleViewDocs = () => {
+    setShowDocumentationPage(true);
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    try {
+      await deleteProject(projectId);
+      
+      // If the deleted project was the active project, switch to another one or clear active project
+      if (activeProject?.id === projectId) {
+        const remainingProjects = projects.filter(p => p.id !== projectId);
+        if (remainingProjects.length > 0) {
+          setActiveProject(remainingProjects[0]);
+        } else {
+          setActiveProject(null);
+          localStorage.removeItem('activeProjectId');
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      // You could add a toast notification here for error feedback
+    }
+  };
+
   const WelcomeScreen = () => (
     <div className={`flex-1 relative overflow-hidden`} style={{ backgroundColor: isDark ? '#1a1a1a' : '#f9fafb' }}>
       {/* Background Pattern */}
@@ -188,11 +238,11 @@ function App() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 bg-gradient-to-br from-gray-600 to-gray-700 rounded-2xl flex items-center justify-center">
-                <span className="text-2xl">🚀</span>
+                <span className="text-2xl">📊</span>
               </div>
               <div>
                 <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  Welcome to ProjectFlow
+                  Welcome to Refbase
                 </h1>
                 <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                   Let's get you started with your first project
@@ -218,70 +268,72 @@ function App() {
             transition={{ duration: 0.6 }}
             className="text-center max-w-2xl"
           >
-            {/* Hero Icon */}
-            <div className="relative mb-8">
-              <div className="w-32 h-32 bg-gradient-to-br from-gray-600 to-gray-700 rounded-3xl flex items-center justify-center mx-auto shadow-2xl">
-                <span className="text-5xl">🎯</span>
-              </div>
-              <div className="absolute -top-2 -right-2 w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center">
-                <span className="text-sm">✨</span>
-              </div>
-            </div>
-            
             {/* Main Message */}
             <h2 className={`text-4xl font-bold ${isDark ? 'text-white' : 'text-gray-900'} mb-4`}>
-              Ready to Build Something Amazing?
+              Your Knowledge Base Starts Here
             </h2>
             <p className={`text-xl ${isDark ? 'text-gray-300' : 'text-gray-600'} mb-8 leading-relaxed`}>
-              ProjectFlow helps engineering teams ship faster with Discord-style navigation, 
-              real-time collaboration, and developer-focused workflows.
+              Refbase helps engineering teams capture, organize, and share knowledge with 
+              AI-powered search, conversation tracking, and bug management.
             </p>
             
             {/* Features Preview */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
               <div className={`p-6 rounded-xl border shadow-sm`} style={{ 
                 backgroundColor: isDark ? '#111111' : '#ffffff',
                 borderColor: isDark ? '#374151' : '#e5e7eb'
               }}>
-                <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center mb-4 mx-auto">
-                  <span className="text-2xl">📋</span>
-                </div>
-                <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>Task Management</h3>
-                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Kanban boards, sprint planning, and developer workflows</p>
-              </div>
-              
-              <div className={`p-6 rounded-xl border shadow-sm`} style={{ 
-                backgroundColor: isDark ? '#111111' : '#ffffff',
-                borderColor: isDark ? '#374151' : '#e5e7eb'
-              }}>
-                <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center mb-4 mx-auto">
-                  <span className="text-2xl">📝</span>
-                </div>
-                <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>Documentation</h3>
-                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>PRDs, technical specs, and team knowledge base</p>
-              </div>
-              
-              <div className={`p-6 rounded-xl border shadow-sm`} style={{ 
-                backgroundColor: isDark ? '#111111' : '#ffffff',
-                borderColor: isDark ? '#374151' : '#e5e7eb'
-              }}>
-                <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4 mx-auto">
                   <span className="text-2xl">💬</span>
                 </div>
-                <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>Team Chat</h3>
-                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Real-time communication with context</p>
+                <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>Conversations</h3>
+                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Save and search conversations with AI-powered insights</p>
+              </div>
+              
+              <div className={`p-6 rounded-xl border shadow-sm`} style={{ 
+                backgroundColor: isDark ? '#111111' : '#ffffff',
+                borderColor: isDark ? '#374151' : '#e5e7eb'
+              }}>
+                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                  <span className="text-2xl">⚡</span>
+                </div>
+                <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>Features</h3>
+                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Track working solutions with code examples and patterns</p>
+              </div>
+              
+              <div className={`p-6 rounded-xl border shadow-sm`} style={{ 
+                backgroundColor: isDark ? '#111111' : '#ffffff',
+                borderColor: isDark ? '#374151' : '#e5e7eb'
+              }}>
+                <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                  <span className="text-2xl">🐛</span>
+                </div>
+                <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>Bug Management</h3>
+                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Document, track, and resolve issues systematically</p>
               </div>
             </div>
             
             {/* CTA */}
-            <div className="space-y-4">
+            <div className="flex flex-col items-center space-y-4">
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="px-8 py-4 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-105"
+                className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-105"
               >
-                🚀 Create Your First Project
+                📊 Create Your First Project
               </button>
-              <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => setShowDocumentationPage(true)}
+                  className={`px-6 py-3 border rounded-lg transition-all font-medium ${
+                    isDark 
+                      ? 'border-gray-600 text-gray-300 hover:bg-gray-800 hover:border-gray-500' 
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400'
+                  }`}
+                >
+                  📚 View Documentation
+                </button>
+              </div>
+              <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'} mt-2`}>
                 Takes less than 30 seconds to get started
               </p>
             </div>
@@ -295,16 +347,16 @@ function App() {
         }}>
           <div className="flex items-center justify-center space-x-8 text-sm">
             <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
-              <span className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Supabase Connected</span>
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Database Connected</span>
             </div>
             <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
-              <span className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Real-time Sync</span>
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>AI-Powered Search</span>
             </div>
             <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
-              <span className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Enterprise Ready</span>
+              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+              <span className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Knowledge Management</span>
             </div>
           </div>
         </div>
@@ -321,13 +373,16 @@ function App() {
         activeProject={activeProject}
         onProjectSelect={handleProjectSelect}
         onCreateProject={() => setShowCreateModal(true)}
+        onDeleteProject={handleDeleteProject}
+        onUpdateProject={updateProject}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        onViewDocs={handleViewDocs}
       />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {activeProject ? (
+        {projects.length > 0 && activeProject ? (
           <ProjectWorkspace 
             key={activeProject.id}
             project={activeProject}
