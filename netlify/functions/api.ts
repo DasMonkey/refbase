@@ -843,7 +843,7 @@ app.post('/api/features', async (req, res) => {
       project_context: projectContext,
       user_id: user.id,
       project_id: projectId || null, // Use provided projectId or null if not specified
-      status: 'implemented',
+      status: 'planned',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };

@@ -96,6 +96,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
   const [newFileName, setNewFileName] = useState('');
   const [newFileType, setNewFileType] = useState<FeatureFile['type']>('requirement');
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [deletionType, setDeletionType] = useState<'feature' | 'file'>('feature');
   const [searchQuery, setSearchQuery] = useState('');
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [showFilterPopup, setShowFilterPopup] = useState(false);
@@ -390,6 +391,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
 
   const handleDeleteFeature = () => {
     if (selectedFeature) {
+      setDeletionType('feature');
       setShowDeleteConfirmation(true);
     }
   };
@@ -399,11 +401,13 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
       deleteFeature(selectedFeature.id);
       setSelectedFeature(null);
       setShowDeleteConfirmation(false);
+      setDeletionType('feature');
     }
   };
 
   const handleDeleteFeatureFile = () => {
     if (selectedFeatureFile) {
+      setDeletionType('file');
       setShowDeleteConfirmation(true);
     }
   };
@@ -413,6 +417,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
       deleteFeatureFile(selectedFeatureFile.id);
       setSelectedFeatureFile(null);
       setShowDeleteConfirmation(false);
+      setDeletionType('feature');
     }
   };
 
@@ -1359,16 +1364,16 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
                   whileHover={{ x: 8 }}
                   transition={{ duration: 0.08, ease: "easeOut" }}
                 >
-                  <div className="flex items-center space-x-3">
-                    <FileText size={14} className={`${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <FileText size={14} className={`${isDark ? 'text-gray-400' : 'text-gray-500'} flex-shrink-0`} />
                     <div className="min-w-0 flex-1">
                       <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'} truncate`}>{feature.title}</div>
-                      <div className="flex items-center space-x-2 mt-0.5">
-                        <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} capitalize`}>
+                      <div className="flex items-center space-x-2 mt-0.5 min-w-0">
+                        <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} capitalize whitespace-nowrap`}>
                           {feature.type ? feature.type.replace('-', ' ') : 'Feature'}
                         </span>
-                        <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>•</span>
-                        <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                        <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'} flex-shrink-0`}>•</span>
+                        <span className={`text-xs ${isDark ? 'text-gray-600' : 'text-gray-400'} whitespace-nowrap`}>
                           {new Date(feature.updatedAt).toLocaleDateString()}
                         </span>
                       </div>
@@ -2023,14 +2028,17 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
       {/* Delete Confirmation Modal */}
       <DeleteConfirmationModal
         isOpen={showDeleteConfirmation}
-        onClose={() => setShowDeleteConfirmation(false)}
-        onConfirm={selectedFeatureFile ? confirmDeleteFeatureFile : confirmDeleteFeature}
-        title={selectedFeatureFile ? "Delete File" : "Delete Feature"}
-        message={selectedFeatureFile 
+        onClose={() => {
+          setShowDeleteConfirmation(false);
+          setDeletionType('feature');
+        }}
+        onConfirm={deletionType === 'file' ? confirmDeleteFeatureFile : confirmDeleteFeature}
+        title={deletionType === 'file' ? "Delete File" : "Delete Feature"}
+        message={deletionType === 'file'
           ? "Are you sure you want to delete this file? This action cannot be undone."
           : "Are you sure you want to delete this feature? All associated files and data will be permanently removed."
         }
-        itemName={selectedFeatureFile ? selectedFeatureFile.name : selectedFeature?.title}
+        itemName={deletionType === 'file' ? selectedFeatureFile?.name : selectedFeature?.title}
       />
     </div>
   );

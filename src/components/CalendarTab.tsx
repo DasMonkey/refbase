@@ -966,13 +966,20 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ project }) => {
                     </div>
                   ) : (
                     optimisticTrackers.map(tracker => {
+                      // Normalize tracker dates to remove time components for comparison
                       const startDate = new Date(tracker.startDate);
                       const endDate = new Date(tracker.endDate);
+                      const normalizedStartDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+                      const normalizedEndDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
                       const getColor = (type: string) => type === 'project' ? 'bg-blue-500' : type === 'feature' ? 'bg-green-500' : 'bg-red-500';
                       
                       return (
                         <div key={tracker.id} className={`flex border-b ${selectedTracker?.id === tracker.id ? (isDark ? 'bg-gray-800/50' : 'bg-blue-50/50') : ''}`} style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
-                          <div className="w-48 p-4 border-r flex items-center" style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}>
+                          <div 
+                            className={`w-48 p-4 border-r flex items-center cursor-pointer transition-colors hover:${isDark ? 'bg-gray-800/30' : 'bg-gray-50'}`} 
+                            style={{ borderColor: isDark ? '#2a2a2a' : '#e2e8f0' }}
+                            onClick={() => handleTrackerClick(tracker)}
+                          >
                             <div className="flex-1 min-w-0">
                               <div className={`text-sm font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{tracker.title}</div>
                               <div className="flex items-center space-x-1 mt-1">
@@ -990,9 +997,9 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ project }) => {
                               const date = new Date(currentDate);
                               date.setDate(currentDate.getDate() - 7 + i);
                               const dayDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-                              const isInRange = dayDate >= startDate && dayDate <= endDate;
-                              const isStart = dayDate.getTime() === startDate.getTime();
-                              const isEnd = dayDate.getTime() === endDate.getTime();
+                              const isInRange = dayDate >= normalizedStartDate && dayDate <= normalizedEndDate;
+                              const isStart = dayDate.getTime() === normalizedStartDate.getTime();
+                              const isEnd = dayDate.getTime() === normalizedEndDate.getTime();
                               const isWeekend = date.getDay() === 0 || date.getDay() === 6; // Sunday (0) or Saturday (6)
                               const isTodayDate = isToday(date);
                               
@@ -1012,8 +1019,8 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({ project }) => {
                                       onClick={() => handleTrackerClick(tracker)}
                                     >
                                       {isStart && <span className="px-2 truncate">{tracker.title}</span>}
-                                      {isEnd && tracker.status === 'completed' && <div className="ml-auto text-white text-xs">✓</div>}
-                                      {isEnd && tracker.status === 'in_progress' && <div className="ml-auto w-2 h-2 bg-white rounded-full animate-pulse"></div>}
+                                      {isEnd && tracker.status === 'completed' && <div className="ml-auto flex items-center space-x-1 text-white text-xs font-medium pr-2"><span>✓</span><span>Done</span></div>}
+                                      {isEnd && tracker.status === 'in_progress' && <div className="ml-auto flex items-center space-x-1 text-white text-xs font-medium pr-2"><div className="w-2 h-2 bg-white rounded-full animate-pulse"></div><span>Active</span></div>}
                                     </div>
                                   )}
                                   

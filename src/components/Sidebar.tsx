@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Settings, ChevronLeft, ChevronRight, LogOut, MoreVertical, Trash2, Edit, Check, X } from 'lucide-react';
+import { Plus, Settings, ChevronLeft, ChevronRight, LogOut, MoreVertical, Trash2, Edit, Check, X, Copy } from 'lucide-react';
 import { Project } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { SettingsModal } from './SettingsModal';
@@ -155,6 +155,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       handleRenameSave(project);
     } else if (event.key === 'Escape') {
       handleRenameCancel();
+    }
+  };
+
+  const handleCopyProjectId = async (project: Project, event: React.MouseEvent) => {
+    event.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(project.id);
+      setOpenMenuId(null);
+      // You could add a toast notification here if desired
+      console.log('Project ID copied to clipboard:', project.id);
+    } catch (error) {
+      console.error('Failed to copy project ID:', error);
     }
   };
 
@@ -469,6 +481,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 <Edit size={16} className="mr-2" />
                 Rename
+              </button>
+              <button
+                onClick={(e) => {
+                  const project = projects.find(p => p.id === openMenuId);
+                  if (project) handleCopyProjectId(project, e);
+                }}
+                className="w-full flex items-center px-3 py-2 text-gray-200 hover:bg-gray-700 hover:text-white transition-colors rounded-lg text-sm font-medium mb-1"
+              >
+                <Copy size={16} className="mr-2" />
+                Copy project ID
               </button>
               <button
                 onClick={(e) => {

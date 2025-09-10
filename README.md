@@ -3,6 +3,7 @@
 > **Intelligent Development Knowledge Base** - Transform your AI coding conversations into a searchable, organized reference database that grows with every development session.
 
 [![Built with Kiro](https://img.shields.io/badge/Built%20with-Kiro-blue?style=flat-square)](https://kiro.dev)
+[![Built with Claude AI](https://img.shields.io/badge/Built%20with-Claude%20AI-purple?style=flat-square)](https://claude.ai)
 [![React](https://img.shields.io/badge/React-18.3.1-61dafb?style=flat-square&logo=react)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5.3-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-Backend-3ecf8e?style=flat-square&logo=supabase)](https://supabase.com/)

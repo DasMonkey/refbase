@@ -600,7 +600,7 @@ export const useSupabaseProjects = () => {
     if (!user) throw new Error('User not authenticated');
 
     try {
-      // Try to delete from Supabase
+      // Delete from Supabase - cascade deletes will handle related data
       const { error } = await supabase
         .from('features')
         .delete()
@@ -608,6 +608,25 @@ export const useSupabaseProjects = () => {
 
       if (error) {
         console.error('Error deleting feature from Supabase:', error);
+      }
+
+      // Also delete related tasks and bugs from Supabase
+      const { error: taskError } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('feature_id', id);
+
+      if (taskError) {
+        console.error('Error deleting feature tasks from Supabase:', taskError);
+      }
+
+      const { error: bugError } = await supabase
+        .from('bugs')
+        .delete()
+        .eq('feature_id', id);
+
+      if (bugError) {
+        console.error('Error deleting feature bugs from Supabase:', bugError);
       }
     } catch (error) {
       console.error('Error deleting feature:', error);
@@ -626,6 +645,15 @@ export const useSupabaseProjects = () => {
     const updatedFiles = featureFiles.filter(ff => ff.featureId !== id);
     setFeatureFiles(updatedFiles);
     saveToLocalStorage('featureFiles', updatedFiles);
+
+    // Delete related tasks and bugs
+    const updatedTasks = tasks.filter(t => t.featureId !== id);
+    setTasks(updatedTasks);
+    saveToLocalStorage('tasks', updatedTasks);
+
+    const updatedBugs = bugs.filter(b => b.featureId !== id);
+    setBugs(updatedBugs);
+    saveToLocalStorage('bugs', updatedBugs);
   };
 
   const createFeatureFile = async (featureId: string, name: string, type: FeatureFile['type'], existingFeature?: Feature) => {

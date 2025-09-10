@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, FileText, Search, Filter } from 'lucide-react';
+import { Plus, FileText, Search, Filter, Upload } from 'lucide-react';
 import { FiTrash } from 'react-icons/fi';
 import { Project, Document } from '../types';
 import { useSupabaseProjects } from '../hooks/useSupabaseProjects';
@@ -445,18 +445,6 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ project }) => {
                       Updated {new Date(selectedDoc.updatedAt).toLocaleDateString()}
                     </span>
                   </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={handleSaveDocument}
-                    className={`px-4 py-2 text-sm font-medium transition-all duration-200 border ${
-                      isDark 
-                        ? 'bg-green-900 hover:bg-green-800 text-green-200 border-green-800' 
-                        : 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200'
-                    }`}
-                  >
-                    Save Changes
-                  </button>
                 </div>
               </div>
             </div>

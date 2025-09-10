@@ -31,6 +31,8 @@ interface ProjectWorkspaceProps {
   onAiChatStateChange?: (isOpen: boolean) => void;
   forceShowAiChat?: boolean;
   onForceShowAiChatChange?: (show: boolean) => void;
+  initialTab?: string | null;
+  onTabChange?: (tab: string) => void;
 }
 
 const tabs = [
@@ -49,10 +51,15 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
   project,
   onAiChatStateChange,
   forceShowAiChat: externalForceShowAiChat = false,
-  onForceShowAiChatChange
+  onForceShowAiChatChange,
+  initialTab,
+  onTabChange
 }) => {
-  // Initialize activeTab from localStorage or default to 'dashboard'
+  // Initialize activeTab from props, localStorage, or default to 'dashboard'
   const [activeTab, setActiveTab] = useState<TabType>(() => {
+    if (initialTab && tabs.some(tab => tab.id === initialTab)) {
+      return initialTab as TabType;
+    }
     const saved = localStorage.getItem(`activeTab_${project.id}`);
     return (saved as TabType) || 'dashboard';
   });
@@ -74,6 +81,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
       setDashboardRefreshKey(prev => prev + 1); // Force dashboard re-render
     }
     setActiveTab(tabId);
+    onTabChange?.(tabId);
   };
 
   // Save activeTab to localStorage whenever it changes

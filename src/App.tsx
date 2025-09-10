@@ -28,10 +28,35 @@ function App() {
     }
   }, [isAuthenticated, authLoading]);
   
+  // Helper functions for URL hash state management
+  const getStateFromHash = () => {
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    return {
+      projectId: params.get('project'),
+      tab: params.get('tab')
+    };
+  };
+
+  const updateHashState = (projectId?: string, tab?: string) => {
+    const params = new URLSearchParams();
+    if (projectId) params.set('project', projectId);
+    if (tab) params.set('tab', tab);
+    
+    const hashString = params.toString();
+    const newHash = hashString ? `#${hashString}` : '';
+    
+    if (window.location.hash !== newHash) {
+      window.history.replaceState(null, '', window.location.pathname + newHash);
+    }
+  };
+
   // All hooks must be called before any conditional returns
   const [activeProject, setActiveProject] = useState<Project | null>(() => {
-    const savedProjectId = localStorage.getItem('activeProjectId');
-    return savedProjectId ? { id: savedProjectId } as Project : null;
+    // Try to restore from URL hash first, then localStorage
+    const hashState = getStateFromHash();
+    const projectId = hashState.projectId || localStorage.getItem('activeProjectId');
+    return projectId ? { id: projectId } as Project : null;
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const saved = localStorage.getItem('sidebarCollapsed');
@@ -96,23 +121,27 @@ function App() {
     localStorage.setItem('sidebarCollapsed', JSON.stringify(sidebarCollapsed));
   }, [sidebarCollapsed]);
 
-  // Save active project to localStorage
+  // Save active project to localStorage and URL hash
   useEffect(() => {
     if (activeProject?.id) {
       localStorage.setItem('activeProjectId', activeProject.id);
+      const hashState = getStateFromHash();
+      updateHashState(activeProject.id, hashState.tab);
     }
   }, [activeProject?.id]);
 
   // Initialize with saved project or first project or show welcome state
   useEffect(() => {
     if (projects.length > 0) {
-      const savedProjectId = localStorage.getItem('activeProjectId');
+      // Try to get project ID from URL hash first, then localStorage
+      const hashState = getStateFromHash();
+      const targetProjectId = hashState.projectId || localStorage.getItem('activeProjectId');
       
-      if (savedProjectId) {
-        // Try to find the saved project
-        const savedProject = projects.find(p => p.id === savedProjectId);
-        if (savedProject && (!activeProject || activeProject.id !== savedProject.id)) {
-          setActiveProject(savedProject);
+      if (targetProjectId) {
+        // Try to find the target project
+        const targetProject = projects.find(p => p.id === targetProjectId);
+        if (targetProject && (!activeProject || activeProject.id !== targetProject.id)) {
+          setActiveProject(targetProject);
           return;
         }
       }
@@ -389,6 +418,8 @@ function App() {
             onAiChatStateChange={handleAiChatStateChange}
             forceShowAiChat={forceShowAiChat}
             onForceShowAiChatChange={handleForceShowAiChatChange}
+            initialTab={getStateFromHash().tab}
+            onTabChange={(tab) => updateHashState(activeProject.id, tab)}
           />
         ) : (
           <WelcomeScreen />
