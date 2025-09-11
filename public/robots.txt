@@ -1,0 +1,27 @@
+User-agent: *
+Allow: /
+
+# Important pages for SEO
+Allow: /api/
+Allow: /docs/
+Allow: /.well-known/
+
+# Block private areas
+Disallow: /dashboard/
+Disallow: /admin/
+Disallow: /private/
+Disallow: /_*
+
+# Block development files
+Disallow: *.json$
+Disallow: *.map$
+
+# Allow social media crawlers
+User-agent: facebookexternalhit/1.1
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+# Sitemap location
+Sitemap: https://refbase.dev/sitemap.xml
