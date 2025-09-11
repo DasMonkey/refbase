@@ -86,7 +86,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, onSuccess }) => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `https://refbase.dev`
+          redirectTo: 'https://refbase.dev/'
         }
       });
       if (error) throw error;
