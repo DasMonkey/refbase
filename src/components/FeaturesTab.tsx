@@ -164,7 +164,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
     .filter(feature => 
       searchQuery === '' || 
       feature.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      feature.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      feature.content?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       feature.content?.toLowerCase().includes(searchQuery.toLowerCase())
     )
     .sort((a, b) => {
@@ -218,7 +218,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
     });
 
   // Filter and sort chat files specifically
-  const currentChatFiles = selectedFeature ? featureFiles.filter(f => f.featureId === selectedFeature.id && f.type === 'chat') : [];
+  const currentChatFiles = selectedFeature ? featureFiles.filter(f => f.featureId === selectedFeature.id && f.type === 'custom') : [];
   const filteredChatFiles = currentChatFiles
     .filter(file => 
       chatFileSearchQuery === '' || 
@@ -492,7 +492,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
   // Chat file handlers
   const handleCreateChatFile = async () => {
     if (selectedFeature && newChatFileName.trim()) {
-      const newFile = await createFeatureFile(selectedFeature.id, newChatFileName.trim(), 'chat');
+      const newFile = await createFeatureFile(selectedFeature.id, newChatFileName.trim(), 'custom');
       setSelectedChatFile(newFile);
       setShowCreateChatFileModal(false);
       setNewChatFileName('');
@@ -523,7 +523,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
   const handleImportText = async () => {
     if (selectedFeature && importText.trim()) {
       const fileName = `chat-${new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')}.md`;
-      const newFile = await createFeatureFile(selectedFeature.id, fileName, 'chat');
+      const newFile = await createFeatureFile(selectedFeature.id, fileName, 'custom');
       
       // Update the file with the imported content
       const updatedFile = { ...newFile, content: importText.trim() };
@@ -850,7 +850,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
         >
           <div className="p-6 space-y-6">
             <div>
-              <h3 className={`text-lg font-semibold ${isDark ? 'text-gray-200' : 'text-gray-800'} mb-2`}>AI Summary & Analysis</h3>
+              <h3 className={`text-lg font-semibold ${isDark ? 'text-gray-200' : 'text-gray-800'} mb-2`}>AI Summary & Analysis (coming soon)</h3>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                 Generate clean implementation guides from your imported chat conversations
               </p>
@@ -1314,7 +1314,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
     features: Feature[],
     isExpanded: boolean,
     setExpanded: (expanded: boolean) => void,
-    statusColors: { [key: string]: string }
+    colorClass: string
   ) => {
     // Auto-hide if no features in this status
     if (features.length === 0) {
@@ -1338,7 +1338,7 @@ export const FeaturesTab: React.FC<FeaturesTabProps> = ({ project }) => {
             <span className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
               {title}
             </span>
-            <span className={`text-xs px-2 py-0.5 rounded ${statusColors}`}>
+            <span className={`text-xs px-2 py-0.5 rounded ${colorClass}`}>
               {features.length}
             </span>
           </div>
