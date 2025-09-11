@@ -67,7 +67,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           options: {
             data: {
               full_name: formData.fullName,
-            }
+            },
+            emailRedirectTo: 'https://refbase.dev/'
           }
         });
 
@@ -101,7 +102,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `https://refbase.dev`
+          redirectTo: 'https://refbase.dev/'
         }
       });
       if (error) throw error;
