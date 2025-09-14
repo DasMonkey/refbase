@@ -24,6 +24,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const lastEventRef = useRef<{ event: string; userId: string | null; timestamp: number } | null>(null);
 
+  const clearAllStorageData = () => {
+    // Get all localStorage keys
+    const localStorageKeys = Object.keys(localStorage);
+
+    // Remove all Supabase-related keys
+    localStorageKeys.forEach(key => {
+      if (key.startsWith('sb-') || key.includes('supabase')) {
+        localStorage.removeItem(key);
+      }
+    });
+
+    // Get all sessionStorage keys
+    const sessionStorageKeys = Object.keys(sessionStorage);
+
+    // Remove all Supabase-related keys from sessionStorage
+    sessionStorageKeys.forEach(key => {
+      if (key.startsWith('sb-') || key.includes('supabase')) {
+        sessionStorage.removeItem(key);
+      }
+    });
+
+    // Clear any app-specific user data
+    localStorage.removeItem('userName');
+
+    console.log('All storage data cleared');
+  };
+
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
@@ -31,22 +58,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { session }, error } = await supabase.auth.getSession();
 
         if (error) {
-          // Check if the error is related to invalid refresh token
-          if (error.message.includes('Invalid Refresh Token') ||
-              error.message.includes('Refresh Token Not Found')) {
-            // Clear the local session data
-            await supabase.auth.signOut();
+          console.log('Auth session error:', error.message);
+          // Clear all local data and force logout
+          clearAllStorageData();
+          setUser(null);
+        } else if (session?.user) {
+          // Validate that the session is actually valid by checking expiry
+          const now = Math.floor(Date.now() / 1000);
+          if (session.expires_at && session.expires_at < now) {
+            console.log('Session expired, clearing data');
+            clearAllStorageData();
             setUser(null);
           } else {
-            console.error('Auth session error:', error);
+            setUser(session.user);
           }
         } else {
-          setUser(session?.user ?? null);
+          setUser(null);
         }
       } catch (error) {
         console.error('Error getting initial session:', error);
-        // Clear session on any unexpected error
-        await supabase.auth.signOut();
+        // Clear all data on any unexpected error
+        clearAllStorageData();
         setUser(null);
       } finally {
         setLoading(false);
@@ -105,31 +137,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     try {
-      // Check if there's a current session first
-      const { data: { session } } = await supabase.auth.getSession();
+      // Always clear local state first to ensure UI updates immediately
+      setUser(null);
 
-      if (!session) {
-        // No session to sign out from, just clear local state
-        setUser(null);
-        return;
+      // Try to sign out from Supabase, but don't block on it
+      try {
+        await supabase.auth.signOut({ scope: 'global' });
+      } catch (signOutError) {
+        // If signOut fails (like 403 Forbidden), continue with cleanup
+        console.log('Supabase signOut failed, continuing with local cleanup:', signOutError);
       }
 
-      const { error } = await supabase.auth.signOut({ scope: 'global' });
-      if (error) {
-        // Handle specific auth errors gracefully
-        if (error.message.includes('Auth session missing') ||
-            error.message.includes('Invalid Refresh Token') ||
-            error.message.includes('Refresh Token Not Found')) {
-          // Session already cleared, just update local state
-          setUser(null);
-        } else {
-          console.error('Error signing out:', error);
-        }
-      }
+      // Clear all local storage data regardless of Supabase result
+      clearAllStorageData();
+
     } catch (error) {
       console.error('Error during sign out:', error);
-      // Even if sign out fails, clear local state
+      // Even if everything fails, ensure user is logged out locally
       setUser(null);
+      clearAllStorageData();
     }
   };
 
