@@ -2,7 +2,7 @@ import * as React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { DeveloperSettingsTab } from '../DeveloperSettingsTab';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../contexts/AuthContext';
 import * as tokenUtils from '../../lib/tokenUtils';
 
 // Mock the useAuth hook

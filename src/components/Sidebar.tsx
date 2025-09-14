@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Settings, ChevronLeft, ChevronRight, LogOut, MoreVertical, Trash2, Edit, Check, X, Copy } from 'lucide-react';
 import { Project } from '../types';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../contexts/AuthContext';
 import { SettingsModal } from './SettingsModal';
 
 interface SidebarProps {

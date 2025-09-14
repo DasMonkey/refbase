@@ -9,7 +9,7 @@ import { CreateProjectModal } from './components/CreateProjectModal';
 import { ConnectionStatus } from './components/ConnectionStatus';
 import { ChatBubble } from './components/ChatBubble';
 import { ChatBubbleErrorBoundary } from './components/ChatBubbleErrorBoundary';
-import { useAuth } from './hooks/useAuth';
+import { useAuth } from './contexts/AuthContext';
 import { useSupabaseProjects } from './hooks/useSupabaseProjects';
 import { useTheme } from './contexts/ThemeContext';
 import { Project } from './types';

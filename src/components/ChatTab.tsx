@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Send, Smile, Paperclip, User } from 'lucide-react';
 import { Project } from '../types';
 import { useSupabaseProjects } from '../hooks/useSupabaseProjects';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface ChatTabProps {

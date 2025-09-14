@@ -12,7 +12,6 @@ import {
   Mail,
   Phone,
   MapPin,
-  Camera,
   Save,
   Key,
   Code2,
@@ -21,7 +20,7 @@ import {
   Github
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../contexts/AuthContext';
 import { ApiStorageTab } from './ApiStorageTab';
 import { ApiKeyManagementTab } from './ApiKeyManagementTab';
 
@@ -67,7 +66,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       phone: user?.user_metadata?.phone || '',
       location: user?.user_metadata?.location || '',
       bio: user?.user_metadata?.bio || '',
-      avatar: user?.user_metadata?.avatar_url || '',
     };
   });
 
@@ -85,7 +83,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
         phone: user.user_metadata?.phone || '',
         location: user.user_metadata?.location || '',
         bio: user.user_metadata?.bio || '',
-        avatar: user.user_metadata?.avatar_url || '',
       });
       
       // Clear changes flag when user data is refreshed
@@ -132,8 +129,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           full_name: userProfile.name,
           phone: userProfile.phone,
           location: userProfile.location,
-          bio: userProfile.bio,
-          avatar_url: userProfile.avatar
+          bio: userProfile.bio
         }
       });
 
@@ -178,24 +174,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       case 'profile':
         return (
           <div className="space-y-6">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <div className={`w-20 h-20 rounded-full ${isDark ? 'bg-gray-700' : 'bg-gray-200'} flex items-center justify-center`}>
-                  {userProfile.avatar ? (
-                    <img src={userProfile.avatar} alt="Avatar" className="w-full h-full rounded-full object-cover" />
-                  ) : (
-                    <User size={32} className={isDark ? 'text-gray-400' : 'text-gray-500'} />
-                  )}
-                </div>
-                <button className="absolute bottom-0 right-0 p-1 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors">
-                  <Camera size={12} />
-                </button>
-              </div>
-              <div>
-                <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Profile Picture</h3>
-                <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Upload a photo to personalize your account</p>
-              </div>
-            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
